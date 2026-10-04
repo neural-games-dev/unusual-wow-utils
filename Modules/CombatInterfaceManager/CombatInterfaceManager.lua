@@ -47,16 +47,6 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       self.utils:SetDbTableItem("playerInfo", "factionGroup", UnitFactionGroup("player"))
       local playerName = UnitName("player")
       self.utils:SetDbTableItem("playerInfo", "name", playerName)
-
-      if self.utils:GetDbValue("showGreeting") then
-         self.logger:Print(
-            "Hi, "
-            .. playerName
-            .. "! Thanks for using this addon! Type "
-            .. CIM_Constants.slashCommandQuoted
-            .. " to get more info."
-         )
-      end
    end
 
    function CombatInterfaceManager:RegisterChatFramesListener()

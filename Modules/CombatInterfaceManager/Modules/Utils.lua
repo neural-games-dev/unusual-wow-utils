@@ -28,10 +28,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
 
    function Utils:HandleConfigOptionsDisplay()
       if dialog.OpenFrames["CombatInterfaceManager"] then
-         self.cim.logger:Print("Hiding the config options window.")
          dialog:Close("CombatInterfaceManager")
       else
-         self.cim.logger:Print("Showing the config options window.")
          dialog:Open("CombatInterfaceManager")
       end
    end

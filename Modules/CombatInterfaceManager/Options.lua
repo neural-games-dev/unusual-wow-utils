@@ -22,7 +22,5 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          factionGroup = nil,
          name = "",
       },
-      showCommandOutput = false,
-      showGreeting = true,
    }
 end)

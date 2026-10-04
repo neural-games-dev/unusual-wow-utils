@@ -52,6 +52,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    local options = {
       type = "group",
       name = "UwU: Cooldown Bar Global",
+      childGroups = "tab", -- General & Profiles as tabs (in /cbg and in Options > AddOns)
       args = {
          general = {
             name = "General",
@@ -295,13 +296,11 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       end
 
       -- And add the options table to the actual interface UI
-      aceConfigDialog:AddToBlizOptions("Cooldown Bar Global", nil, nil, "general")
-      aceConfigDialog:AddToBlizOptions("Cooldown Bar Global", "Profiles", "Cooldown Bar Global", "profile")
+      -- one page under Unusual WoW Utils in Options > AddOns, with General & Profiles as tabs
+      aceConfigDialog:AddToBlizOptions("Cooldown Bar Global", "Cooldown Bar Global", UWU.SETTINGS_CATEGORY)
 
       -- Add the event
       CooldownBarGlobal:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
-
-      print("Cooldown Bar Global loaded");
    end
 
    function CooldownBarGlobal:SetupFrame()

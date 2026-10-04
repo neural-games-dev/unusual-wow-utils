@@ -37,7 +37,9 @@ A customizable bar to visually track the global cooldown. Options: `/cbg`
 
 ### Quest Log Counter
 
-A counter showing how many quests you have in your log. It's locked in place by default; hold Shift and left-click drag to move it.
+A counter showing how many quests you have in your log. It sits just left of the quest log, with their tops aligned. It's locked in place; hold Shift and left-click drag to move it, and use `/qlc reset` to put it back.
+
+Use `/qlc hide` and `/qlc show` to hide or show the counter (remembered across reloads). If Combat Interface Manager is set to hide the quest log in combat, the counter hides along with it, and these commands have no effect.
 
 ## Enabling & Disabling Utils
 

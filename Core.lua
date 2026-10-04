@@ -10,6 +10,11 @@ local addonName, UWU = ...
 UWU.modules = {}
 UWU.moduleOrder = {}
 
+-- Our category in Options > AddOns. Utils with option pages add them as subcategories of it,
+-- e.g. AddToBlizOptions(appName, "Some Util", UWU.SETTINGS_CATEGORY). It's registered while
+-- UwU loads, before any util's Ace OnInitialize runs, so it always exists by then.
+UWU.SETTINGS_CATEGORY = "Unusual WoW Utils"
+
 local function Print(msg)
    print("|cFF33ff99Unusual WoW Utils:|r " .. msg)
 end
@@ -73,8 +78,7 @@ UWU:RegisterModule("CombatInterfaceManager", {
    desc = "Hides & restores UI elements (chat, minimap, quest tracker) when you enter & leave combat.",
    slashCommands = { "/cim" },
    commandHelp = { -- listed by /uwu help
-      { "/cim", "List the CIM commands" },
-      { "/cim options", "Open the options window" },
+      { "/cim", "Open or close the options window" },
       { "/cim debug", "Toggle debug logging" },
    },
    configApp = "CombatInterfaceManager", -- its AceConfig app name, opened by the cog in /uwu
@@ -93,6 +97,12 @@ UWU:RegisterModule("CooldownBarGlobal", {
 UWU:RegisterModule("QuestLogCounter", {
    title = "Quest Log Counter",
    desc = "Displays a draggable counter showing how many quests you have in your log.",
+   slashCommands = { "/qlc" },
+   commandHelp = {
+      { "/qlc show", "Show the counter" },
+      { "/qlc hide", "Hide the counter" },
+      { "/qlc reset", "Move the counter back next to the quest log" },
+   },
 })
 
 -- Display names for the bindings in Bindings.xml. They're defined here, not in the modules, so
@@ -147,7 +157,7 @@ UWU:RegisterModule("AutoDungeonQueue", {
    },
    -- no options window, so its /uwu button opens the game's Key Bindings instead
    configIcon = KEY_BINDINGS_ICON,
-   configDesc = "Open Key Bindings to set the Auto Dungeon Queue key",
+   configWord = "Keybinds", -- the button's hover tooltip
    openConfig = function()
       OpenKeyBindings(AUTO_DUNGEON_QUEUE_BINDING_PREFIX)
    end,
@@ -158,7 +168,7 @@ UWU:RegisterModule("ChatTabCycler", {
    desc = "Keybinds to cycle your chat tabs forward AND backward.",
    -- no options window, so its /uwu button opens the game's Key Bindings instead
    configIcon = KEY_BINDINGS_ICON,
-   configDesc = "Open Key Bindings to set the Chat Tab Cycler keys",
+   configWord = "Keybinds",
    openConfig = function()
       OpenKeyBindings(CHAT_TAB_CYCLER_BINDING_PREFIX)
    end,
@@ -175,6 +185,35 @@ local STATUS_TEXT = {
    pending = "|cFFb0b0b0Not loaded|r",
 }
 
+-- An Ace "Icon" button that, on hover, shows its option's `arg` (one word) as a small tooltip to
+-- its right, vertically centered on the icon, instead of Ace's usual tooltip above it.
+local ICON_BUTTON_WIDGET = "UWU-IconButton"
+
+do
+   local AceGUI = LibStub("AceGUI-3.0")
+
+   local function IconButton_OnEnter(frame)
+      local option = frame.obj:GetUserData("option")
+      local word = option and option.arg
+
+      if word then
+         GameTooltip:SetOwner(frame, "ANCHOR_NONE")
+         GameTooltip:ClearAllPoints()
+         GameTooltip:SetPoint("LEFT", frame.obj.image, "RIGHT", 4, 0)
+         GameTooltip:SetText(word, 1, 1, 1)
+         GameTooltip:Show()
+      end
+   end
+
+   AceGUI:RegisterWidgetType(ICON_BUTTON_WIDGET, function()
+      local widget = AceGUI.WidgetRegistry["Icon"]() -- a regular Ace Icon button...
+      widget.type = ICON_BUTTON_WIDGET -- ...pooled under our own type when released
+      widget.frame:SetScript("OnEnter", IconButton_OnEnter)
+      widget.frame:SetScript("OnLeave", GameTooltip_Hide)
+      return widget
+   end, 1)
+end
+
 function UWU:RegisterSettings()
    local args = {
       tagline = {
@@ -190,7 +229,7 @@ function UWU:RegisterSettings()
       },
       reloadNote = {
          type = "description",
-         name = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:0|t Toggle changes take effect after you reload your UI.\n\n\n", -- extra spacing before the toggles
+         name = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:0|t Reload the UI for your toggle changes to take effect.\n\n\n", -- extra spacing before the toggles
          order = 2,
       },
       reloadSpacer = {
@@ -238,14 +277,8 @@ function UWU:RegisterSettings()
       args[key .. "Config"] = {
          type = "execute",
          name = "",
-         desc = function()
-            if mod.openConfig then
-               return mod.configDesc
-            elseif mod.status == "loaded" then
-               return "Open " .. mod.title .. " options"
-            end
-            return "Enable " .. mod.title .. " and reload your UI to configure it."
-         end,
+         dialogControl = ICON_BUTTON_WIDGET, -- shows `arg` as a one-word tooltip to its right
+         arg = mod.configWord or "Options",
          image = mod.configIcon or "Interface\\Buttons\\UI-OptionsButton",
          imageWidth = 16,
          imageHeight = 16,
@@ -272,7 +305,8 @@ function UWU:RegisterSettings()
       args = args,
    })
    LibStub("AceConfigDialog-3.0"):SetDefaultSize(addonName, 440, 420) -- Ace's default (700x500) is mostly empty space
-   LibStub("AceConfigDialog-3.0"):AddToBlizOptions(addonName, "Unusual WoW Utils")
+   -- the utils' own option pages are added under this one (see UWU.SETTINGS_CATEGORY)
+   LibStub("AceConfigDialog-3.0"):AddToBlizOptions(addonName, UWU.SETTINGS_CATEGORY)
 end
 
 local COMMAND_COLOR = "|cFFbada55"
@@ -324,6 +358,20 @@ SlashCmdList["UNUSUALWOWUTILS"] = function(msg)
    end
 end
 
+-- Windows that can't be resized, however they're opened (slash command, /uwu cog, etc.).
+-- Ace turns resizing back on whenever it reuses one of these pooled windows for anything else.
+local FIXED_SIZE_WINDOWS = {
+   [addonName] = true, -- the /uwu settings window
+   CombatInterfaceManager = true, -- /cim
+}
+
+hooksecurefunc(LibStub("AceConfigDialog-3.0"), "Open", function(dialog, appName, container)
+   local widget = not container and FIXED_SIZE_WINDOWS[appName] and dialog.OpenFrames[appName]
+   if widget then
+      widget:EnableResize(false)
+   end
+end)
+
 --## ==========================================================================
 --## START UP
 --## ==========================================================================
@@ -339,6 +387,9 @@ loader:SetScript("OnEvent", function(self, _, loadedAddonName)
    UnusualWowUtilsDB = UnusualWowUtilsDB or {}
    UnusualWowUtilsDB.modules = UnusualWowUtilsDB.modules or {}
    UWU.db = UnusualWowUtilsDB
+
+   -- printed before the modules load, so their own startup lines show as sub-items under it
+   Print("Loaded! Type |cFFbada55/uwu help|r for more info.")
 
    for _, key in ipairs(UWU.moduleOrder) do
       UWU:LoadModule(key)

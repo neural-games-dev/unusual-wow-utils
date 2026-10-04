@@ -17,19 +17,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
    function CombatInterfaceManager:SlashCommandInfoConfig(command)
       local cmd = command:trim()
 
-      -- Display the CombatInterfaceManager commands and notes
+      -- `/cim` by itself opens/closes the options window (the command list lives in `/uwu help`)
       if cmd == "" then
-         self.logger:Print(
-            self.chalk:cyan("----- COMMANDS -----")
-               .. "\n"
-               .. self.chalk:badass("/cim options")
-               .. " -- Shows the options window to customize this addon.\n"
-         )
-
-         return
-      end
-
-      if cmd == "options" then
          self.utils:HandleConfigOptionsDisplay()
          return
       end
@@ -38,11 +27,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          local debugValue = not (self.db.profile.debugEnabled == true)
          local debugValueDisplay = string.upper(tostring(debugValue))
 
-         if self.db.profile.showCommandOutput then
-            self.logger:Print("Setting the debug value to: " .. self.chalk:debug(debugValueDisplay))
-         end
-
          self.utils:SetDbValue("debugEnabled", debugValue)
+         self.logger:Print("Debug logging is now: " .. self.chalk:debug(debugValueDisplay))
          return
       end
 
