@@ -35,6 +35,12 @@ Hides UI elements (chat, minimap, quest tracker) when you enter combat and resto
 
 A customizable bar to visually track the global cooldown. Options: `/cbg`
 
+> [!NOTE]
+>
+> This util is a resurrection of an add-on that I used many moons ago, originally created by **Radagast7**.
+>
+> If you have a link to the original (e.g. an old GitHub or CurseForge page), please post a message & share it, and I'll properly link to it here.
+
 ### Quest Log Counter
 
 A counter showing how many quests you have in your log. It sits just left of the quest log, with their tops aligned. It's locked in place; hold Shift and left-click drag to move it, and use `/qlc reset` to put it back.
@@ -55,13 +61,13 @@ Combat Interface Manager, Cooldown Bar Global, and Quest Log Counter were previo
 
 Add an `/adq exit` command (and keybinding) to get out of a dungeon you're already inside. There's no single "exit this instance" API, but these cover the common cases:
 
-| API                              | What it does                                                                                                                                                                       |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API                              | What it does                                                                                                                                                                        |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LFGTeleport(true)`              | Teleports you out of a Dungeon Finder dungeon but keeps you in the group (the same as "Teleport out of Dungeon" in the queue eye menu). `LFGTeleport(false)` teleports you back in. |
 | `C_PartyInfo.LeaveParty()`       | Leaves your group. Inside an instance, the game then ports you out after a short grace timer. Works for any group instance.                                                         |
-| `LeaveInstanceParty()`           | Leaves the instance group specifically, for when you're in both a normal party and a Dungeon Finder group at once.                                                                |
-| `C_PartyInfo.DelveTeleportOut()` | Teleports out of a Delve.                                                                                                                                                          |
-| `LeaveBattlefield()`             | Leaves a battleground or arena.                                                                                                                                                    |
+| `LeaveInstanceParty()`           | Leaves the instance group specifically, for when you're in both a normal party and a Dungeon Finder group at once.                                                                  |
+| `C_PartyInfo.DelveTeleportOut()` | Teleports out of a Delve.                                                                                                                                                           |
+| `LeaveBattlefield()`             | Leaves a battleground or arena.                                                                                                                                                     |
 
 Helpers for deciding which one applies:
 

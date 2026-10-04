@@ -12,12 +12,13 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    -- Defaults for CooldownBarGlobalDB
    local defaults = {
       profile = {
-         x = 100,
-         y = -100,
-         p = "TOPLEFT",
-         rp = "TOPLEFT",
-         w = 400,
-         h = 3,
+         -- centered on screen
+         x = 0,
+         y = 0,
+         p = "CENTER",
+         rp = "CENTER",
+         w = 250,
+         h = 8,
          color = { r = 0, g = 1.0, b = 0, a = 1.0 },
          backgroundColor = { r = 0.3, g = 0.3, b = 0.3, a = 0.5 },
          lagColor = { r = 1.0, g = 0, b = 0, a = 1.0 },
@@ -312,7 +313,8 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- Because the positioning is now changed so that y's will always be negative (as the frame is anchored on top left
       -- of entire screen, and anything to the right is negative), this should ensure that the current settings for people
       -- will work, altho the positioning might be strange
-      if profileDB.y > 0 then
+      -- (only for that old top-left anchor; a centered bar can legitimately sit above center)
+      if profileDB.p == "TOPLEFT" and profileDB.y > 0 then
          profileDB.y = profileDB.y * -1
       end
 
@@ -392,10 +394,15 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
 
    function CooldownBarGlobal:ACTIONBAR_UPDATE_COOLDOWN()
       -- 61304 is the 'Global Cooldown' spell
-      start, duration = GetSpellCooldown(61304)
+      -- (the old GetSpellCooldown global was removed in 11.0; C_Spell returns a table instead)
+      local cooldown = C_Spell.GetSpellCooldown(61304)
+      if not cooldown then
+         return
+      end
+      start, duration = cooldown.startTime, cooldown.duration
 
-      -- Check for combat status and duration left
-      if (UnitAffectingCombat("player") == 1 or profileDB.combatOnly == false) and duration > 0 then
+      -- Check for combat status and duration left (UnitAffectingCombat returns a boolean, not 1)
+      if (UnitAffectingCombat("player") or profileDB.combatOnly == false) and duration > 0 then
          -- Make the frame if it isn't already there
          if not gcdBarFrame then
             CooldownBarGlobal:SetupFrame()
