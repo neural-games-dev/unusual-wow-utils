@@ -4,10 +4,7 @@ local _, UWU = ...
 UWU:AddModuleChunk("ChatTabCycler", function()
    -- ChatTabCycler.lua
 
-   -- Define the keybinding names and descriptions
-   BINDING_HEADER_CHATTABCYCLER = "Chat Tab Cycler"
-   BINDING_NAME_CHATTABCYCLER_NEXT = "Cycle to Next Chat Tab"
-   BINDING_NAME_CHATTABCYCLER_PREV = "Cycle to Previous Chat Tab"
+   -- (keybinding display names are defined in Core.lua so they show even while this module is disabled)
 
    -- Function to cycle chat tabs
    local function cycleChatTab(direction)

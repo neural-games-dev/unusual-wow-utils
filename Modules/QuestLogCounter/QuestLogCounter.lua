@@ -52,10 +52,17 @@ UWU:AddModuleChunk("QuestLogCounter", function()
 
    -- Function to update the quest count
    local function UpdateQuestCount()
-      local numQuests = C_QuestLog.GetNumQuestLogEntries()
-      -- local maxQuests = C_QuestLog.GetMaxNumQuests()
-      local maxQuests = 95
-      -- local maxQuestsCanAccept = C_QuestLog.GetMaxNumQuestsCanAccept()
+      -- Count only real quests: log entries also include zone/category headers,
+      -- hidden quests, and world quests/bonus objectives that don't use a quest slot
+      local numQuests = 0
+      for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+         local info = C_QuestLog.GetInfo(i)
+         if info and not info.isHeader and not info.isHidden and not info.isTask and not info.isBounty then
+            numQuests = numQuests + 1
+         end
+      end
+
+      local maxQuests = C_QuestLog.GetMaxNumQuestsCanAccept()
 
       -- Determine color based on capacity
       local colorCode
@@ -67,7 +74,6 @@ UWU:AddModuleChunk("QuestLogCounter", function()
          colorCode = "|cFF00FF00" -- Green when normal
       end
 
-      -- text:SetText(colorCode .. numQuests .. "|r / " .. maxQuests .. " (" .. maxQuestsCanAccept .. ")")
       text:SetText(colorCode .. numQuests .. "|r / " .. maxQuests)
       text:SetTextColor(1, 1, 1, 1) -- Set base color to white
    end

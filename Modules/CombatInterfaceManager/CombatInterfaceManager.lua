@@ -14,7 +14,6 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
    --## ===============================================================================================
 
    function CombatInterfaceManager:OnInitialize()
-      self.version = UWU.modules.CombatInterfaceManager.version -- was read from the standalone TOC file
       self.db = LibStub("AceDB-3.0"):New("CombatInterfaceManagerDB", { profile = CIM_Defaults }, true)
 
       -- calling all modules! all modules to the front! (keep in this order)

@@ -34,7 +34,7 @@ Hides UI elements (chat, minimap, quest tracker) when you enter combat and resto
 
 ### Cooldown Bar Global
 
-A customizable bar to visually track the global cooldown. Options: `/cdgbar`
+A customizable bar to visually track the global cooldown. Options: `/cbg`
 
 ### Quest Log Counter
 

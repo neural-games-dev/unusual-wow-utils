@@ -51,7 +51,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    -- Options table for use of Ace-Config 3
    local options = {
       type = "group",
-      name = "Cooldown Bar Global",
+      name = "UwU: Cooldown Bar Global",
       args = {
          general = {
             name = "General",
@@ -281,7 +281,18 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       self.db.RegisterCallback(self, "OnProfileReset", "OnProfileChanged")
 
       -- And register the options
-      LibStub("AceConfig-3.0"):RegisterOptionsTable("Cooldown Bar Global", options, "cdgbar");
+      LibStub("AceConfig-3.0"):RegisterOptionsTable("Cooldown Bar Global", options);
+
+      -- /cbg just toggles the config window (AceConfig's own slash handler would
+      -- expose the option groups, e.g. "general" & "profile", as subcommands)
+      SLASH_COOLDOWNBARGLOBAL1 = "/cbg"
+      SlashCmdList["COOLDOWNBARGLOBAL"] = function()
+         if aceConfigDialog.OpenFrames["Cooldown Bar Global"] then
+            aceConfigDialog:Close("Cooldown Bar Global")
+         else
+            aceConfigDialog:Open("Cooldown Bar Global")
+         end
+      end
 
       -- And add the options table to the actual interface UI
       aceConfigDialog:AddToBlizOptions("Cooldown Bar Global", nil, nil, "general")
@@ -290,8 +301,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- Add the event
       CooldownBarGlobal:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
 
-      -- Get meta data to output version number
-      print("Cooldown Bar Global v" .. UWU.modules.CooldownBarGlobal.version .. " loaded");
+      print("Cooldown Bar Global loaded");
    end
 
    function CooldownBarGlobal:SetupFrame()

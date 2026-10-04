@@ -41,6 +41,24 @@
     "GameTooltip_Hide",
     "GameTooltip",
     "GameFontDisableSmall",
-    "GameFontNormalSmall"
+    "GameFontNormalSmall",
+    "CopyTable",
+    "SettingsPanel",
+    "hash_SlashCmdList",
+    "NOT_BOUND"
+  ],
+  "Lua.runtime.builtin": {
+    "basic": "disable",
+    "debug": "disable",
+    "io": "disable",
+    "math": "disable",
+    "os": "disable",
+    "package": "disable",
+    "string": "disable",
+    "table": "disable",
+    "utf8": "disable"
+  },
+  "Lua.workspace.library": [
+    "~\\.vscode\\extensions\\ketho.wow-api-0.22.3\\Annotations\\Core"
   ]
 }

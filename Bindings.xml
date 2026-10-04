@@ -1,9 +1,12 @@
 <Bindings>
-   <!-- the functions only exist while the Chat Tab Cycler module is enabled -->
-   <Binding name="ChatTabCycler: Go To Next">
+   <!-- display names come from the BINDING_HEADER_/BINDING_NAME_ globals in Core.lua -->
+   <!-- every binding goes in the shared "Unusual WoW Utils" category -->
+
+   <!-- Chat Tab Cycler (the functions only exist while its module is enabled) -->
+   <Binding name="CHATTABCYCLER_NEXT" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if ChatTabCycler_NextTab then ChatTabCycler_NextTab() end
    </Binding>
-   <Binding name="ChatTabCycler: Go To Prev">
+   <Binding name="CHATTABCYCLER_PREV" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if ChatTabCycler_PrevTab then ChatTabCycler_PrevTab() end
    </Binding>
 </Bindings>

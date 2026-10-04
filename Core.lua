@@ -61,32 +61,62 @@ end
 --## ==========================================================================
 UWU:RegisterModule("CombatInterfaceManager", {
    title = "Combat Interface Manager",
-   version = "v0.1.2",
-   desc = "Hides & restores UI elements (chat, minimap, quest tracker) when you enter & leave combat. Options: /cim",
+   desc = "Hides & restores UI elements (chat, minimap, quest tracker) when you enter & leave combat.",
+   slashCommands = { "/cim" },
+   configApp = "CombatInterfaceManager", -- its AceConfig app name, opened by the cog in /uwu
 })
 
 UWU:RegisterModule("CooldownBarGlobal", {
    title = "Cooldown Bar Global",
-   version = "2.0",
-   desc = "A customizable bar to visually track the global cooldown. Options: /cdgbar",
+   desc = "A customizable bar to visually track the global cooldown.",
+   slashCommands = { "/cbg" },
+   configApp = "Cooldown Bar Global",
 })
 
 UWU:RegisterModule("QuestLogCounter", {
    title = "Quest Log Counter",
-   version = "1.0.1",
    desc = "Displays a draggable counter showing how many quests you have in your log.",
 })
 
 UWU:RegisterModule("AutoDungeonQueue", {
    title = "Auto Dungeon Queue",
-   version = "1.0",
-   desc = "Joins the dungeon queue with your last selected roles via a keybind or /adq.",
+   desc = "Joins the dungeon queue with your last selected roles via a keybind or slash command.",
+   slashCommands = { "/adq" },
 })
+
+-- Display names for the bindings in Bindings.xml. They're defined here, not in the module, so
+-- they show in Key Bindings even while it's disabled. The prefix doubles as the search term below.
+BINDING_HEADER_UNUSUALWOWUTILS = "Unusual WoW Utils" -- the Key Bindings category for all of our bindings
+local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
+BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
+BINDING_NAME_CHATTABCYCLER_PREV = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Prev"
 
 UWU:RegisterModule("ChatTabCycler", {
    title = "Chat Tab Cycler",
-   version = "1.0",
    desc = "Keybinds to cycle your chat tabs forward AND backward.",
+   -- no options window, so its /uwu button opens the game's Key Bindings instead
+   -- (the bindings exist even while the module is disabled, so it never greys out)
+   configIcon = "Interface\\Icons\\INV_Misc_Key_03",
+   configDesc = "Open Key Bindings to set the Chat Tab Cycler keys",
+   openConfig = function()
+      LibStub("AceConfigDialog-3.0"):Close(addonName)
+      Settings.OpenToCategory(Settings.KEYBINDINGS_CATEGORY_ID)
+
+      -- prefill the Settings search (next frame, once the panel has finished opening)
+      C_Timer.After(0, function()
+         local searchBox = SettingsPanel and SettingsPanel.SearchBox
+         if not searchBox then
+            return
+         end
+
+         searchBox:SetText(CHAT_TAB_CYCLER_BINDING_PREFIX)
+         -- SetText reports a non-user change; run the handler as if it was typed
+         local onTextChanged = searchBox:GetScript("OnTextChanged")
+         if onTextChanged then
+            onTextChanged(searchBox, true)
+         end
+      end)
+   end,
 })
 
 --## ==========================================================================
@@ -94,7 +124,7 @@ UWU:RegisterModule("ChatTabCycler", {
 --## ==========================================================================
 local STATUS_TEXT = {
    loaded = "|cFF00FF00Running|r",
-   disabled = "|cFFb0b0b0Disabled|r",
+   disabled = "|cFFfd4a4aDisabled|r",
    standalone = "|cFFfa8200Skipped (standalone addon is loaded)|r",
    error = "|cFFff0000Failed to load (see Lua errors)|r",
    pending = "|cFFb0b0b0Not loaded|r",
@@ -102,10 +132,26 @@ local STATUS_TEXT = {
 
 function UWU:RegisterSettings()
    local args = {
+      tagline = {
+         type = "description",
+         name = C_AddOns.GetAddOnMetadata(addonName, "Notes") .. "\n\n", -- the TOC's "Notes"
+         fontSize = "medium",
+         order = 0,
+      },
       intro = {
          type = "description",
-         name = "Turn individual utils on or off. Changes take effect after you reload your UI.\n",
+         name = "Turn individual utils on or off.\n\n",
          order = 1,
+      },
+      reloadNote = {
+         type = "description",
+         name = "|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:0|t Toggle changes take effect after you reload your UI.\n\n\n", -- extra spacing before the toggles
+         order = 2,
+      },
+      reloadSpacer = {
+         type = "description",
+         name = " ",
+         order = 999,
       },
       reload = {
          type = "execute",
@@ -115,14 +161,27 @@ function UWU:RegisterSettings()
       },
    }
 
-   for i, key in ipairs(self.moduleOrder) do
+   -- listed alphabetically by title (independent of the load order)
+   local sortedKeys = CopyTable(self.moduleOrder)
+   table.sort(sortedKeys, function(a, b)
+      return self.modules[a].title < self.modules[b].title
+   end)
+
+   for i, key in ipairs(sortedKeys) do
       local mod = self.modules[key]
 
       args[key] = {
          type = "toggle",
          name = mod.title,
          desc = function()
-            return mod.desc .. "\n\nCurrent session: " .. STATUS_TEXT[mod.status]
+            local text = mod.desc .. "\n\nCurrent session: " .. STATUS_TEXT[mod.status]
+
+            if mod.slashCommands then
+               local label = #mod.slashCommands > 1 and "Slash commands: " or "Slash command: "
+               text = text .. "\n" .. label .. "|cFFbada55" .. table.concat(mod.slashCommands, ", ") .. "|r"
+            end
+
+            return text
          end,
          get = function()
             return self:IsModuleEnabled(key)
@@ -131,8 +190,40 @@ function UWU:RegisterSettings()
             self.db.modules[key] = value
             Print(mod.title .. " will be " .. (value and "enabled" or "disabled") .. " after you /reload.")
          end,
-         width = "full",
-         order = 10 + i,
+         width = 2, -- leaves room for the cog on the same row
+         order = 10 + i * 2,
+      }
+
+      -- button to the right of the toggle: a cog that opens the util's own options window,
+      -- or a module-specific icon & action (`configIcon` / `openConfig`)
+      args[key .. "Config"] = {
+         type = "execute",
+         name = "",
+         desc = function()
+            if mod.openConfig then
+               return mod.configDesc
+            elseif mod.status == "loaded" then
+               return "Open " .. mod.title .. " options"
+            end
+            return "Enable " .. mod.title .. " and reload your UI to configure it."
+         end,
+         image = mod.configIcon or "Interface\\Buttons\\UI-OptionsButton",
+         imageWidth = 16,
+         imageHeight = 16,
+         func = function()
+            if mod.openConfig then
+               mod.openConfig()
+            else
+               LibStub("AceConfigDialog-3.0"):Open(mod.configApp)
+            end
+         end,
+         disabled = function()
+            -- an AceConfig options window only exists once its module has loaded
+            return mod.configApp and mod.status ~= "loaded"
+         end,
+         hidden = not (mod.configApp or mod.openConfig),
+         width = 0.2,
+         order = 10 + i * 2 + 1,
       }
    end
 
@@ -141,7 +232,35 @@ function UWU:RegisterSettings()
       name = "Unusual WoW Utils",
       args = args,
    })
+   LibStub("AceConfigDialog-3.0"):SetDefaultSize(addonName, 440, 420) -- Ace's default (700x500) is mostly empty space
    LibStub("AceConfigDialog-3.0"):AddToBlizOptions(addonName, "Unusual WoW Utils")
+
+   self:MakeSettingsWindowTransparent()
+end
+
+-- The /uwu window's background is 25% transparent (its text & controls stay solid).
+-- Ace windows are pooled & shared with every Ace addon, so when a frame we made
+-- see-through gets reused for another window, its normal background is put back.
+local SETTINGS_WINDOW_BG_ALPHA = 0.75
+
+function UWU:MakeSettingsWindowTransparent()
+   local dialog = LibStub("AceConfigDialog-3.0")
+   local transparentFrame -- the pooled frame we last made see-through
+
+   hooksecurefunc(dialog, "Open", function(_, appName, container)
+      local widget = not container and dialog.OpenFrames[appName]
+      if not widget then
+         return
+      end
+
+      if appName == addonName then
+         widget.frame:SetBackdropColor(0, 0, 0, SETTINGS_WINDOW_BG_ALPHA)
+         transparentFrame = widget.frame
+      elseif widget.frame == transparentFrame then
+         widget.frame:SetBackdropColor(0, 0, 0, 1) -- Ace's default
+         transparentFrame = nil
+      end
+   end)
 end
 
 SLASH_UNUSUALWOWUTILS1 = "/uwu"

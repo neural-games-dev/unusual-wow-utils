@@ -146,8 +146,7 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
    frame:SetScript("OnEvent", OnAddonLoaded)
 
    -- Register slash commands
-   SLASH_AUTODUNGEONQUEUE1 = "/autodungeonqueue"
-   SLASH_AUTODUNGEONQUEUE2 = "/adq"
+   SLASH_AUTODUNGEONQUEUE1 = "/adq"
    SlashCmdList["AUTODUNGEONQUEUE"] = SlashCommandHandler
 
    -- Global function for keybinding

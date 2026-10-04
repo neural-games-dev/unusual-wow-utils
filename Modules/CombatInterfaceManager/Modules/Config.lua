@@ -34,7 +34,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
 
       return {
          desc = "Select the UI elements you want to hide when you're in combat.",
-         name = "Combat Interface Manager (" .. tostring(cim.version) .. ")",
+         name = "UwU: Combat Interface Manager",
          type = "group",
          args = {
             uiElements = {
