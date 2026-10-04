@@ -2,9 +2,15 @@
    <!-- display names come from the BINDING_HEADER_/BINDING_NAME_ globals in Core.lua -->
    <!-- every binding goes in the shared "Unusual WoW Utils" category -->
 
-   <!-- Auto Dungeon Queue (the function only exists while its module is enabled) -->
+   <!-- Auto Dungeon Queue (the functions only exist while its module is enabled) -->
    <Binding name="AUTODUNGEONQUEUE_QUEUE" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if AutoDungeonQueue_Queue then AutoDungeonQueue_Queue() end
+   </Binding>
+   <Binding name="AUTODUNGEONQUEUE_LEAVE" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if AutoDungeonQueue_Leave then AutoDungeonQueue_Leave() end
+   </Binding>
+   <Binding name="AUTODUNGEONQUEUE_CLEAR" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if AutoDungeonQueue_ClearRoles then AutoDungeonQueue_ClearRoles() end
    </Binding>
 
    <!-- Chat Tab Cycler (the functions only exist while its module is enabled) -->

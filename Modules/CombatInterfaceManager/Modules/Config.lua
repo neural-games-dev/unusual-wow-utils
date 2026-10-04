@@ -22,6 +22,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          "CombatInterfaceManager",
          self:GetBlizzOptionsFrame(cim)
       )
+      -- Ace's default window (700x500) is mostly empty space for these few options
+      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 410, 250)
       self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions(
          "CombatInterfaceManager",
          "Combat Interface Manager"
@@ -76,6 +78,18 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
                      order = 103,
                      set = function(info, value)
                         cim.utils:SetDbTableItem("isHiding", "objectiveTracker", value)
+                     end,
+                     type = "toggle",
+                  },
+                  hideZoneMap = {
+                     desc = "The Zone Map (Shift+M). It's only shown again after combat if it was open before.",
+                     get = function()
+                        return cim.utils:GetDbValue("isHiding.zoneMap")
+                     end,
+                     name = "Zone Map",
+                     order = 104,
+                     set = function(info, value)
+                        cim.utils:SetDbTableItem("isHiding", "zoneMap", value)
                      end,
                      type = "toggle",
                   },

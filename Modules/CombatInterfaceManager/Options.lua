@@ -12,6 +12,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          chatFrame = false,
          minimap = false,
          objectiveTracker = false,
+         zoneMap = false,
       },
       isLoaded = {
          itemLock = nil,

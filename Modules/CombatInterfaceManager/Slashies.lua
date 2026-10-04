@@ -22,25 +22,19 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          self.logger:Print(
             self.chalk:cyan("----- COMMANDS -----")
                .. "\n"
-               .. self.chalk:badass("/cim config (c)")
-               .. " -- Shows the config window to customize this addon.\n"
-               .. self.chalk:badass("/cim options (o)")
-               .. ' -- This is an alias for "config".\n'
+               .. self.chalk:badass("/cim options")
+               .. " -- Shows the options window to customize this addon.\n"
          )
 
          return
       end
 
-      local isConfigOptionsCommand = cmd == "config" or cmd == "c" or cmd == "options" or cmd == "o"
-
-      if isConfigOptionsCommand then
+      if cmd == "options" then
          self.utils:HandleConfigOptionsDisplay()
          return
       end
 
-      local isDebugCommand = cmd == "debug" or cmd == "d"
-
-      if isDebugCommand then
+      if cmd == "debug" then
          local debugValue = not (self.db.profile.debugEnabled == true)
          local debugValueDisplay = string.upper(tostring(debugValue))
 

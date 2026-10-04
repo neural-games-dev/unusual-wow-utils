@@ -10,10 +10,13 @@ By default, all of the utils are enabled, but you can disable specific utils usi
 
 Quickly enter dungeon queues at the press of a keybind or with a slash command.
 
-- `/adq` queues you for a random dungeon with your saved roles, without opening any windows. If you have no saved roles yet, it opens the Dungeon Finder so you can pick them.
+- `/adq` opens or closes the Dungeon Finder.
+- `/adq join` queues you for a random dungeon with your saved roles, without opening any windows. If you have no saved roles yet, it opens the Dungeon Finder so you can pick them. Also available as a keybinding.
+- `/adq leave` leaves the dungeon queue. Also available as a keybinding.
 - `/adq save <tank|healer|DPS>` saves your role(s), e.g. `/adq save tank DPS`. It also ticks the matching boxes in the Dungeon Finder. Roles your class can't fill are rejected.
 - `/adq save` saves whichever roles are currently ticked in the Dungeon Finder.
 - `/adq roles` shows your saved roles.
+- `/adq clear` clears your saved roles and unticks them in the Dungeon Finder (also available as a keybinding), so the next `/adq join` opens the Dungeon Finder to pick them again.
 - `/adq help` lists the commands.
 
 ### Chat Tab Cycler
@@ -40,4 +43,29 @@ A counter showing how many quests you have in your log. It's locked in place by 
 
 Open the settings with `/uwu` (or find "Unusual WoW Utils" under Options > AddOns) and toggle each util. Changes take effect after a `/reload`.
 
+Type `/uwu help` to list the slash commands for UwU and all of its utils.
+
 Combat Interface Manager, Cooldown Bar Global, and Quest Log Counter were previously standalone add-ons. If a standalone copy is still loaded, the matching util here is skipped so they don't clash. Disable the standalone add-on to use the bundled one.
+
+## Future To-Do
+
+### Auto Dungeon Queue: leave an instance (`/adq exit`)
+
+Add an `/adq exit` command (and keybinding) to get out of a dungeon you're already inside. There's no single "exit this instance" API, but these cover the common cases:
+
+| API                              | What it does                                                                                                                                                                       |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LFGTeleport(true)`              | Teleports you out of a Dungeon Finder dungeon but keeps you in the group (the same as "Teleport out of Dungeon" in the queue eye menu). `LFGTeleport(false)` teleports you back in. |
+| `C_PartyInfo.LeaveParty()`       | Leaves your group. Inside an instance, the game then ports you out after a short grace timer. Works for any group instance.                                                         |
+| `LeaveInstanceParty()`           | Leaves the instance group specifically, for when you're in both a normal party and a Dungeon Finder group at once.                                                                |
+| `C_PartyInfo.DelveTeleportOut()` | Teleports out of a Delve.                                                                                                                                                          |
+| `LeaveBattlefield()`             | Leaves a battleground or arena.                                                                                                                                                    |
+
+Helpers for deciding which one applies:
+
+- `IsInInstance()` returns whether you're in an instance and its type (party, raid, pvp, arena, scenario).
+- `IsInLFGDungeon()` and `IsPartyLFG()` tell you whether it's a Dungeon Finder dungeon or group.
+
+Planned behavior: use `LFGTeleport(true)` in a Dungeon Finder dungeon, which gets you out without leaving the group. `C_PartyInfo.LeaveParty()` could back a separate "leave everything" option.
+
+Open question: whether any of these require a hardware event (a direct key press or click). A slash command or keybinding counts as one, so those paths should be fine.

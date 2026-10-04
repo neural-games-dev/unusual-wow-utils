@@ -37,6 +37,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       self:RegisterChatFramesListener()
       self:RegisterMinimapListener()
       self:RegisterObjectiveTrackerListener()
+      self:RegisterZoneMapListener()
 
       -- checking for and storing loaded state of notable addons
       self.utils:SetDbTableItem("isLoaded", "itemLock", C_AddOns.IsAddOnLoaded("ItemLock"))
@@ -154,5 +155,33 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       f:RegisterEvent("PLAYER_REGEN_DISABLED") -- Event for entering combat
       f:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Event for leaving combat
       f:SetScript("OnEvent", ToggleObjectiveTracker)
+   end
+
+   function CombatInterfaceManager:RegisterZoneMapListener()
+      -- the Zone Map (Shift+M) is load-on-demand, so its frame is looked up when combat starts
+      local wasShown = false
+
+      local function ToggleZoneMap(_self, event)
+         local isHiding = self.db.profile.isHiding
+         local zoneMap = BattlefieldMapFrame
+
+         if not (isHiding and isHiding.zoneMap and zoneMap) then
+            return
+         end
+
+         if event == "PLAYER_REGEN_DISABLED" then
+            -- only restore it afterwards if it was open, so combat never opens a closed map
+            wasShown = zoneMap:IsShown()
+            zoneMap:Hide()
+         elseif event == "PLAYER_REGEN_ENABLED" and wasShown then
+            zoneMap:Show()
+            wasShown = false
+         end
+      end
+
+      local f = CreateFrame("Frame")
+      f:RegisterEvent("PLAYER_REGEN_DISABLED") -- Event for entering combat
+      f:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Event for leaving combat
+      f:SetScript("OnEvent", ToggleZoneMap)
    end
 end)
