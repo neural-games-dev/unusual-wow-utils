@@ -2,6 +2,11 @@
    <!-- display names come from the BINDING_HEADER_/BINDING_NAME_ globals in Core.lua -->
    <!-- every binding goes in the shared "Unusual WoW Utils" category -->
 
+   <!-- Auto Dungeon Queue (the function only exists while its module is enabled) -->
+   <Binding name="AUTODUNGEONQUEUE_QUEUE" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if AutoDungeonQueue_Queue then AutoDungeonQueue_Queue() end
+   </Binding>
+
    <!-- Chat Tab Cycler (the functions only exist while its module is enabled) -->
    <Binding name="CHATTABCYCLER_NEXT" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if ChatTabCycler_NextTab then ChatTabCycler_NextTab() end

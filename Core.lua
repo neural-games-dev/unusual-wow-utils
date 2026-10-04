@@ -78,44 +78,60 @@ UWU:RegisterModule("QuestLogCounter", {
    desc = "Displays a draggable counter showing how many quests you have in your log.",
 })
 
+-- Display names for the bindings in Bindings.xml. They're defined here, not in the modules, so
+-- they show in Key Bindings even while a module is disabled. Each util's prefix doubles as the
+-- Key Bindings search term for its /uwu key button.
+BINDING_HEADER_UNUSUALWOWUTILS = "Unusual WoW Utils" -- the Key Bindings category for all of our bindings
+local AUTO_DUNGEON_QUEUE_BINDING_PREFIX = "AutoDungeonQueue"
+BINDING_NAME_AUTODUNGEONQUEUE_QUEUE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Join Queue"
+local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
+BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
+BINDING_NAME_CHATTABCYCLER_PREV = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Prev"
+
+local KEY_BINDINGS_ICON = "Interface\\Icons\\INV_Misc_Key_03"
+
+-- Opens the game's Key Bindings with `searchText` prefilled in the Settings search box.
+-- Used by the /uwu key buttons, which never grey out since bindings exist even while a module is disabled.
+local function OpenKeyBindings(searchText)
+   LibStub("AceConfigDialog-3.0"):Close(addonName)
+   Settings.OpenToCategory(Settings.KEYBINDINGS_CATEGORY_ID)
+
+   -- prefill the Settings search (next frame, once the panel has finished opening)
+   C_Timer.After(0, function()
+      local searchBox = SettingsPanel and SettingsPanel.SearchBox
+      if not searchBox then
+         return
+      end
+
+      searchBox:SetText(searchText)
+      -- SetText reports a non-user change; run the handler as if it was typed
+      local onTextChanged = searchBox:GetScript("OnTextChanged")
+      if onTextChanged then
+         onTextChanged(searchBox, true)
+      end
+   end)
+end
+
 UWU:RegisterModule("AutoDungeonQueue", {
    title = "Auto Dungeon Queue",
    desc = "Joins the dungeon queue with your last selected roles via a keybind or slash command.",
    slashCommands = { "/adq" },
+   -- no options window, so its /uwu button opens the game's Key Bindings instead
+   configIcon = KEY_BINDINGS_ICON,
+   configDesc = "Open Key Bindings to set the Auto Dungeon Queue key",
+   openConfig = function()
+      OpenKeyBindings(AUTO_DUNGEON_QUEUE_BINDING_PREFIX)
+   end,
 })
-
--- Display names for the bindings in Bindings.xml. They're defined here, not in the module, so
--- they show in Key Bindings even while it's disabled. The prefix doubles as the search term below.
-BINDING_HEADER_UNUSUALWOWUTILS = "Unusual WoW Utils" -- the Key Bindings category for all of our bindings
-local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
-BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
-BINDING_NAME_CHATTABCYCLER_PREV = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Prev"
 
 UWU:RegisterModule("ChatTabCycler", {
    title = "Chat Tab Cycler",
    desc = "Keybinds to cycle your chat tabs forward AND backward.",
    -- no options window, so its /uwu button opens the game's Key Bindings instead
-   -- (the bindings exist even while the module is disabled, so it never greys out)
-   configIcon = "Interface\\Icons\\INV_Misc_Key_03",
+   configIcon = KEY_BINDINGS_ICON,
    configDesc = "Open Key Bindings to set the Chat Tab Cycler keys",
    openConfig = function()
-      LibStub("AceConfigDialog-3.0"):Close(addonName)
-      Settings.OpenToCategory(Settings.KEYBINDINGS_CATEGORY_ID)
-
-      -- prefill the Settings search (next frame, once the panel has finished opening)
-      C_Timer.After(0, function()
-         local searchBox = SettingsPanel and SettingsPanel.SearchBox
-         if not searchBox then
-            return
-         end
-
-         searchBox:SetText(CHAT_TAB_CYCLER_BINDING_PREFIX)
-         -- SetText reports a non-user change; run the handler as if it was typed
-         local onTextChanged = searchBox:GetScript("OnTextChanged")
-         if onTextChanged then
-            onTextChanged(searchBox, true)
-         end
-      end)
+      OpenKeyBindings(CHAT_TAB_CYCLER_BINDING_PREFIX)
    end,
 })
 

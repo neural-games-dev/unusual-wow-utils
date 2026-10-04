@@ -10,15 +10,11 @@ By default, all of the utils are enabled, but you can disable specific utils usi
 
 Quickly enter dungeon queues at the press of a keybind or with a slash command.
 
-Activating either will queue you for a dungeon with your last selected role (e.g. damage, healer, or tank).
-
-If you'd like to set a new role, use the slash command with an arg of "damage", "healer", or "tank".
-
-Then the add-on will remember this last selected role moving forward.
-
-Although, if your class is unable to perform the role that you enter, it will fallback to the default role for its class.
-
-For example, if you're a Mage and you enter `/adq tank`, you will be queued for dungeons as a "damage" role.
+- `/adq` queues you for a random dungeon with your saved roles, without opening any windows. If you have no saved roles yet, it opens the Dungeon Finder so you can pick them.
+- `/adq save <tank|healer|DPS>` saves your role(s), e.g. `/adq save tank DPS`. It also ticks the matching boxes in the Dungeon Finder. Roles your class can't fill are rejected.
+- `/adq save` saves whichever roles are currently ticked in the Dungeon Finder.
+- `/adq roles` shows your saved roles.
+- `/adq help` lists the commands.
 
 ### Chat Tab Cycler
 
