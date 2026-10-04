@@ -12,12 +12,13 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    -- Defaults for CooldownBarGlobalDB
    local defaults = {
       profile = {
-         x = 100,
-         y = -100,
-         p = "TOPLEFT",
-         rp = "TOPLEFT",
-         w = 400,
-         h = 3,
+         -- centered on screen
+         x = 0,
+         y = 0,
+         p = "CENTER",
+         rp = "CENTER",
+         w = 250,
+         h = 8,
          color = { r = 0, g = 1.0, b = 0, a = 1.0 },
          backgroundColor = { r = 0.3, g = 0.3, b = 0.3, a = 0.5 },
          lagColor = { r = 1.0, g = 0, b = 0, a = 1.0 },
@@ -26,6 +27,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
          lagtexture = "Blizzard",
          spark = true,
          combatOnly = true,
+         useClassColor = false, -- color the bar with the player's class color instead of `color`
          barType = "HLR",
       },
    }
@@ -48,12 +50,183 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    -- Bar type
    local barType
 
+   -- smallest allowed bar size (the Width/Height sliders' minimums)
+   local MIN_WIDTH = 75
+   local MIN_HEIGHT = 4
+
+   -- The bar's fill color: the player's class color when "Use Class" is on (keeping the alpha
+   -- from the Color setting), otherwise the Color setting itself
+   local function GetBarColor()
+      local color = profileDB.color
+
+      if profileDB.useClassColor then
+         local _, classFile = UnitClass("player")
+         local classColor = classFile and C_ClassColor.GetClassColor(classFile)
+         if classColor then
+            return classColor.r, classColor.g, classColor.b, color.a
+         end
+      end
+
+      return color.r, color.g, color.b, color.a
+   end
+
+   -- Sets the length of the bar or lag texture along the bar's direction. WoW treats a size of 0 as
+   -- "no size", which draws the texture at its image's natural size (ignoring the bar's width), so
+   -- an empty part is hidden instead.
+   local function SetBarLength(texture, length)
+      if length < 0.01 then
+         texture:Hide()
+         return
+      end
+
+      texture:Show()
+      if CooldownBarGlobal:IsHorizontal() then
+         texture:SetWidth(length)
+      else
+         texture:SetHeight(length)
+      end
+   end
+
+   --## Positioning ------------------------------------------------------------
+   -- The bar's position is always stored as its center's offset from the screen's center
+   -- ("CENTER" anchor), so the Positioning tab's X/Y offsets always mean the same thing.
+
+   -- Saves `frame`'s current spot as center offsets; returns false if it isn't laid out yet
+   local function SaveCenterPosition(frame)
+      local frameX, frameY = frame:GetCenter()
+      local screenX, screenY = UIParent:GetCenter()
+      if not (frameX and screenX) then
+         return false
+      end
+
+      profileDB.p, profileDB.rp = "CENTER", "CENTER"
+      profileDB.x = math.floor(frameX - screenX + 0.5)
+      profileDB.y = math.floor(frameY - screenY + 0.5)
+      return true
+   end
+
+   local function SetPosition(x, y)
+      profileDB.p, profileDB.rp = "CENTER", "CENTER"
+      profileDB.x, profileDB.y = x, y
+      CooldownBarGlobal:SetupFrame()
+   end
+
+   -- 'Move' mode keeps the bar visible (and draggable) even with no cooldown running.
+   -- Used by both the General tab's checkbox and `/cbg move`.
+   local function SetMoveMode(value)
+      moveMode = value
+
+      if value then
+         if gcdBarFrame == nil then
+            CooldownBarGlobal:SetupFrame()
+         end
+         gcdBarFrame:Show()
+      end
+      -- when turned off, the bar's next update hides it again (unless a cooldown is running)
+   end
+
+   local POSITION_NUDGE = 1 -- how far the -/+ buttons move the bar
+
+   local function OffsetInput(axis, label, order)
+      return {
+         order = order,
+         name = label,
+         desc = "Offset of the bar's center from the center of the screen.",
+         type = "input",
+         get = function()
+            return tostring(profileDB[axis])
+         end,
+         validate = function(_, value)
+            return tonumber(value) ~= nil or "Please enter a number."
+         end,
+         set = function(_, value)
+            if axis == "x" then
+               SetPosition(tonumber(value), profileDB.y)
+            else
+               SetPosition(profileDB.x, tonumber(value))
+            end
+         end,
+      }
+   end
+
+   local function NudgeButton(axis, direction, order)
+      return {
+         order = order,
+         name = direction < 0 and "-" or "+",
+         type = "execute",
+         width = 0.5,
+         func = function()
+            local delta = direction * POSITION_NUDGE
+            if axis == "x" then
+               SetPosition(profileDB.x + delta, profileDB.y)
+            else
+               SetPosition(profileDB.x, profileDB.y + delta)
+            end
+         end,
+      }
+   end
+
+   -- forces the next options onto a new row
+   local function LineBreak(order)
+      return { order = order, name = "", type = "description", width = "full" }
+   end
+
+   local positioningOptions = {
+      name = "Positioning",
+      type = "group",
+      order = 2,
+      args = {
+         intro = {
+            order = 1,
+            name = "Position the bar precisely, relative to the center of the screen. "
+               .. "Turn on 'Move' mode on the General tab to see the bar while you adjust it.",
+            type = "description",
+            width = "full",
+         },
+         xOffset = OffsetInput("x", "X Offset", 10),
+         yOffset = OffsetInput("y", "Y Offset", 11),
+         nudgeBreak = LineBreak(19),
+         xMinus = NudgeButton("x", -1, 20),
+         xPlus = NudgeButton("x", 1, 21),
+         yMinus = NudgeButton("y", -1, 22),
+         yPlus = NudgeButton("y", 1, 23),
+         centerBreak = LineBreak(29),
+         centerHorizontally = {
+            order = 30,
+            name = "Center Horizontally",
+            type = "execute",
+            func = function()
+               SetPosition(0, profileDB.y)
+            end,
+         },
+         centerVertically = {
+            order = 31,
+            name = "Center Vertically",
+            type = "execute",
+            func = function()
+               SetPosition(profileDB.x, 0)
+            end,
+         },
+         resetBreak = LineBreak(39),
+         resetPosition = {
+            order = 40,
+            name = "Reset Position",
+            desc = "Move the bar back to its default spot, the center of the screen.",
+            type = "execute",
+            func = function()
+               SetPosition(0, 0)
+            end,
+         },
+      },
+   }
+
    -- Options table for use of Ace-Config 3
    local options = {
       type = "group",
       name = "UwU: Cooldown Bar Global",
-      childGroups = "tab", -- General & Profiles as tabs (in /cbg and in Options > AddOns)
+      childGroups = "tab", -- General, Positioning & Profiles as tabs (in /cbg and in Options > AddOns)
       args = {
+         positioning = positioningOptions,
          general = {
             name = "General",
             type = "group",
@@ -61,7 +234,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
             args = {
                firstheader = {
                   order = 1,
-                  name = "Position & Size",
+                  name = "Size", -- position is on the Positioning tab
                   type = "header",
                },
                width = {
@@ -69,7 +242,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                   name = "Width",
                   desc = "Width of global cooldown bar.",
                   type = "range",
-                  min = 2,
+                  min = MIN_WIDTH,
                   max = 1000,
                   step = 1,
                   set = function(info, value)
@@ -85,7 +258,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                   name = "Height",
                   desc = "Height of global cooldown bar.",
                   type = "range",
-                  min = 2,
+                  min = MIN_HEIGHT,
                   max = 1000,
                   step = 1,
                   set = function(info, value)
@@ -126,6 +299,9 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                   desc = "Color of bar.",
                   type = "color",
                   hasAlpha = true,
+                  disabled = function()
+                     return profileDB.useClassColor
+                  end,
                   set = function(info, r, g, b, a)
                      profileDB.color.r = r
                      profileDB.color.g = g
@@ -171,6 +347,22 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                      return profileDB.lagColor.r, profileDB.lagColor.g, profileDB.lagColor.b, profileDB.lagColor.a
                   end,
                },
+               -- "Use Class" sits on its own row, under the Color picker
+               classColorBreak = LineBreak(10.1),
+               useClassColor = {
+                  order = 10.2,
+                  name = "Use Class",
+                  desc = "Color the bar with your class color instead of the Color setting (the Color setting's transparency still applies).",
+                  type = "toggle",
+                  set = function(info, value)
+                     profileDB.useClassColor = value
+                     CooldownBarGlobal:SetupFrame()
+                  end,
+                  get = function(info)
+                     return profileDB.useClassColor
+                  end,
+               },
+               texturesBreak = LineBreak(10.3),
                bartexture = {
                   order = 11,
                   type = 'select',
@@ -251,13 +443,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                   desc = "Enable 'move' mode where the cool down frame is visible at all times (for placing the frame properly).",
                   type = "toggle",
                   set = function(info, value)
-                     moveMode = value
-                     if value == true then
-                        if gcdBarFrame == nil then
-                           CooldownBarGlobal:SetupFrame()
-                        end
-                        gcdBarFrame:Show()
-                     end
+                     SetMoveMode(value)
                   end,
                   get = function(info)
                      return moveMode
@@ -287,7 +473,20 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- /cbg just toggles the config window (AceConfig's own slash handler would
       -- expose the option groups, e.g. "general" & "profile", as subcommands)
       SLASH_COOLDOWNBARGLOBAL1 = "/cbg"
-      SlashCmdList["COOLDOWNBARGLOBAL"] = function()
+      SlashCmdList["COOLDOWNBARGLOBAL"] = function(msg)
+         local command = string.lower(strtrim(msg or ""))
+
+         if command == "move" then
+            SetMoveMode(not moveMode)
+            -- keep the 'Move' mode checkbox in sync if the options are open
+            LibStub("AceConfigRegistry-3.0"):NotifyChange("Cooldown Bar Global")
+            print("|cFF00FF00Cooldown Bar Global:|r 'Move' mode is now " .. (moveMode and "on" or "off") .. ".")
+            return
+         elseif command ~= "" then
+            print("|cFF00FF00Cooldown Bar Global:|r Use /cbg to open the options, or /cbg move to toggle 'Move' mode.")
+            return
+         end
+
          if aceConfigDialog.OpenFrames["Cooldown Bar Global"] then
             aceConfigDialog:Close("Cooldown Bar Global")
          else
@@ -312,15 +511,26 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- Because the positioning is now changed so that y's will always be negative (as the frame is anchored on top left
       -- of entire screen, and anything to the right is negative), this should ensure that the current settings for people
       -- will work, altho the positioning might be strange
-      if profileDB.y > 0 then
+      -- (only for that old top-left anchor; a centered bar can legitimately sit above center)
+      if profileDB.p == "TOPLEFT" and profileDB.y > 0 then
          profileDB.y = profileDB.y * -1
       end
 
       gcdBarFrame = CreateFrame("Frame", nil, UIParent)
 
+      -- raise sizes saved before the minimums existed
+      profileDB.w = math.max(profileDB.w, MIN_WIDTH)
+      profileDB.h = math.max(profileDB.h, MIN_HEIGHT)
+
       gcdBarFrame:SetFrameStrata("BACKGROUND")
       gcdBarFrame:SetSize(profileDB.w, profileDB.h)
       gcdBarFrame:SetPoint(profileDB.p, nil, profileDB.rp, profileDB.x, profileDB.y)
+
+      -- convert older saved positions (other anchors, e.g. TOPLEFT) to center offsets
+      if (profileDB.p ~= "CENTER" or profileDB.rp ~= "CENTER") and SaveCenterPosition(gcdBarFrame) then
+         gcdBarFrame:ClearAllPoints()
+         gcdBarFrame:SetPoint("CENTER", nil, "CENTER", profileDB.x, profileDB.y)
+      end
 
       gcdBarFrame:SetScript("OnUpdate", CooldownBarGlobal_OnUpdate)
       gcdBarFrame:SetScript("OnMouseDown", CooldownBarGlobal_OnMouseDown)
@@ -346,7 +556,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- Create main bar itself
       gcdBarFrame.barTexture = gcdBarFrame:CreateTexture(nil, "ARTWORK")
       gcdBarFrame.barTexture:SetTexture(media:Fetch('statusbar', profileDB.bartexture))
-      gcdBarFrame.barTexture:SetVertexColor(profileDB.color.r, profileDB.color.g, profileDB.color.b, profileDB.color.a)
+      gcdBarFrame.barTexture:SetVertexColor(GetBarColor())
 
       -- Create spark overlay
       gcdBarFrame.sparkTexture = gcdBarFrame:CreateTexture(nil, "OVERLAY")
@@ -388,14 +598,23 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
             gcdBarFrame.barTexture:SetPoint("TOP", gcdBarFrame, "TOP")
          end
       end
+
+      -- start empty, so nothing draws at the textures' natural size before the first update
+      SetBarLength(gcdBarFrame.lagBarTexture, 0)
+      SetBarLength(gcdBarFrame.barTexture, 0)
    end
 
    function CooldownBarGlobal:ACTIONBAR_UPDATE_COOLDOWN()
       -- 61304 is the 'Global Cooldown' spell
-      start, duration = GetSpellCooldown(61304)
+      -- (the old GetSpellCooldown global was removed in 11.0; C_Spell returns a table instead)
+      local cooldown = C_Spell.GetSpellCooldown(61304)
+      if not cooldown then
+         return
+      end
+      start, duration = cooldown.startTime, cooldown.duration
 
-      -- Check for combat status and duration left
-      if (UnitAffectingCombat("player") == 1 or profileDB.combatOnly == false) and duration > 0 then
+      -- Check for combat status and duration left (UnitAffectingCombat returns a boolean, not 1)
+      if (UnitAffectingCombat("player") or profileDB.combatOnly == false) and duration > 0 then
          -- Make the frame if it isn't already there
          if not gcdBarFrame then
             CooldownBarGlobal:SetupFrame()
@@ -422,14 +641,14 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
             else
                lagBarLength = w * (worldLag + 180) / (duration * 1000)
             end
-            gcdBarFrame.lagBarTexture:SetWidth(lagBarLength)
+            SetBarLength(gcdBarFrame.lagBarTexture, lagBarLength)
          else
             if worldLag + 180 >= duration * 1000 then
                lagBarLength = h
             else
                lagBarLength = h * (worldLag + 180) / (duration * 1000)
             end
-            gcdBarFrame.lagBarTexture:SetHeight(lagBarLength)
+            SetBarLength(gcdBarFrame.lagBarTexture, lagBarLength)
          end
 
          -- Show the frame, which will cause it's update to start getting events
@@ -450,9 +669,9 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
 
          -- Show the bar
          if CooldownBarGlobal:IsHorizontal() then
-            gcdBarFrame.barTexture:SetWidth(w * percentage)
+            SetBarLength(gcdBarFrame.barTexture, w * percentage)
          else
-            gcdBarFrame.barTexture:SetHeight(h * percentage)
+            SetBarLength(gcdBarFrame.barTexture, h * percentage)
          end
 
          -- Show the spark if so configured
@@ -483,11 +702,11 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
             gcdBarFrame:Hide()
          else
             if CooldownBarGlobal:IsHorizontal() then
-               gcdBarFrame.lagBarTexture:SetWidth(0)
-               gcdBarFrame.barTexture:SetWidth(0)
+               SetBarLength(gcdBarFrame.lagBarTexture, 0)
+               SetBarLength(gcdBarFrame.barTexture, 0)
             else
-               gcdBarFrame.lagBarTexture:SetHeight(0)
-               gcdBarFrame.barTexture:SetHeight(0)
+               SetBarLength(gcdBarFrame.lagBarTexture, 0)
+               SetBarLength(gcdBarFrame.barTexture, 0)
             end
          end
       end
@@ -509,17 +728,13 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    end
 
    function CooldownBarGlobal_OnMouseUp(self, button)
-      local p, _, rp, x, y = self:GetPoint()
-
       if button == "LeftButton" and self.isMoving then
-         profileDB.x = x
-         profileDB.y = y
-         profileDB.p = p
-         profileDB.rp = rp
-
          self:StopMovingOrSizing()
          self:SetUserPlaced(false)
          self.isMoving = false
+
+         -- save where it was dropped as center offsets (shown on the Positioning tab)
+         SaveCenterPosition(self)
 
          CooldownBarGlobal:SetupFrame()
       end
