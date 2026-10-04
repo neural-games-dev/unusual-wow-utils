@@ -27,6 +27,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
          lagtexture = "Blizzard",
          spark = true,
          combatOnly = true,
+         useClassColor = false, -- color the bar with the player's class color instead of `color`
          barType = "HLR",
       },
    }
@@ -52,6 +53,22 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    -- smallest allowed bar size (the Width/Height sliders' minimums)
    local MIN_WIDTH = 75
    local MIN_HEIGHT = 4
+
+   -- The bar's fill color: the player's class color when "Use Class" is on (keeping the alpha
+   -- from the Color setting), otherwise the Color setting itself
+   local function GetBarColor()
+      local color = profileDB.color
+
+      if profileDB.useClassColor then
+         local _, classFile = UnitClass("player")
+         local classColor = classFile and C_ClassColor.GetClassColor(classFile)
+         if classColor then
+            return classColor.r, classColor.g, classColor.b, color.a
+         end
+      end
+
+      return color.r, color.g, color.b, color.a
+   end
 
    -- Sets the length of the bar or lag texture along the bar's direction. WoW treats a size of 0 as
    -- "no size", which draws the texture at its image's natural size (ignoring the bar's width), so
@@ -92,6 +109,20 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       profileDB.p, profileDB.rp = "CENTER", "CENTER"
       profileDB.x, profileDB.y = x, y
       CooldownBarGlobal:SetupFrame()
+   end
+
+   -- 'Move' mode keeps the bar visible (and draggable) even with no cooldown running.
+   -- Used by both the General tab's checkbox and `/cbg move`.
+   local function SetMoveMode(value)
+      moveMode = value
+
+      if value then
+         if gcdBarFrame == nil then
+            CooldownBarGlobal:SetupFrame()
+         end
+         gcdBarFrame:Show()
+      end
+      -- when turned off, the bar's next update hides it again (unless a cooldown is running)
    end
 
    local POSITION_NUDGE = 1 -- how far the -/+ buttons move the bar
@@ -268,6 +299,9 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                   desc = "Color of bar.",
                   type = "color",
                   hasAlpha = true,
+                  disabled = function()
+                     return profileDB.useClassColor
+                  end,
                   set = function(info, r, g, b, a)
                      profileDB.color.r = r
                      profileDB.color.g = g
@@ -313,6 +347,22 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                      return profileDB.lagColor.r, profileDB.lagColor.g, profileDB.lagColor.b, profileDB.lagColor.a
                   end,
                },
+               -- "Use Class" sits on its own row, under the Color picker
+               classColorBreak = LineBreak(10.1),
+               useClassColor = {
+                  order = 10.2,
+                  name = "Use Class",
+                  desc = "Color the bar with your class color instead of the Color setting (the Color setting's transparency still applies).",
+                  type = "toggle",
+                  set = function(info, value)
+                     profileDB.useClassColor = value
+                     CooldownBarGlobal:SetupFrame()
+                  end,
+                  get = function(info)
+                     return profileDB.useClassColor
+                  end,
+               },
+               texturesBreak = LineBreak(10.3),
                bartexture = {
                   order = 11,
                   type = 'select',
@@ -393,13 +443,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
                   desc = "Enable 'move' mode where the cool down frame is visible at all times (for placing the frame properly).",
                   type = "toggle",
                   set = function(info, value)
-                     moveMode = value
-                     if value == true then
-                        if gcdBarFrame == nil then
-                           CooldownBarGlobal:SetupFrame()
-                        end
-                        gcdBarFrame:Show()
-                     end
+                     SetMoveMode(value)
                   end,
                   get = function(info)
                      return moveMode
@@ -429,7 +473,20 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- /cbg just toggles the config window (AceConfig's own slash handler would
       -- expose the option groups, e.g. "general" & "profile", as subcommands)
       SLASH_COOLDOWNBARGLOBAL1 = "/cbg"
-      SlashCmdList["COOLDOWNBARGLOBAL"] = function()
+      SlashCmdList["COOLDOWNBARGLOBAL"] = function(msg)
+         local command = string.lower(strtrim(msg or ""))
+
+         if command == "move" then
+            SetMoveMode(not moveMode)
+            -- keep the 'Move' mode checkbox in sync if the options are open
+            LibStub("AceConfigRegistry-3.0"):NotifyChange("Cooldown Bar Global")
+            print("|cFF00FF00Cooldown Bar Global:|r 'Move' mode is now " .. (moveMode and "on" or "off") .. ".")
+            return
+         elseif command ~= "" then
+            print("|cFF00FF00Cooldown Bar Global:|r Use /cbg to open the options, or /cbg move to toggle 'Move' mode.")
+            return
+         end
+
          if aceConfigDialog.OpenFrames["Cooldown Bar Global"] then
             aceConfigDialog:Close("Cooldown Bar Global")
          else
@@ -499,7 +556,7 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- Create main bar itself
       gcdBarFrame.barTexture = gcdBarFrame:CreateTexture(nil, "ARTWORK")
       gcdBarFrame.barTexture:SetTexture(media:Fetch('statusbar', profileDB.bartexture))
-      gcdBarFrame.barTexture:SetVertexColor(profileDB.color.r, profileDB.color.g, profileDB.color.b, profileDB.color.a)
+      gcdBarFrame.barTexture:SetVertexColor(GetBarColor())
 
       -- Create spark overlay
       gcdBarFrame.sparkTexture = gcdBarFrame:CreateTexture(nil, "OVERLAY")

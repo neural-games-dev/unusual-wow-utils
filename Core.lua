@@ -90,6 +90,7 @@ UWU:RegisterModule("CooldownBarGlobal", {
    slashCommands = { "/cbg" },
    commandHelp = {
       { "/cbg", "Open or close the options window" },
+      { "/cbg move", "Toggle 'Move' mode (keeps the bar visible so you can drag it)" },
    },
    configApp = "Cooldown Bar Global",
 })

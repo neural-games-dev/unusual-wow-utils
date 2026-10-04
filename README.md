@@ -35,6 +35,8 @@ Hides UI elements (chat, minimap, quest tracker) when you enter combat and resto
 
 A customizable bar to visually track the global cooldown. Options: `/cbg`
 
+Use `/cbg move` to toggle 'Move' mode, which keeps the bar visible so you can drag it into place.
+
 > [!NOTE]
 >
 > This util is a resurrection of an add-on that I used many moons ago, originally created by **Radagast7**.
