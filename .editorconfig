@@ -1,0 +1,28 @@
+# Setting this file as the top most Editor Config file
+root = true
+
+# Default settings for every file
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 3
+indent_style = space
+insert_final_newline = true
+max_line_length = 120
+tab_width = 3
+trim_trailing_whitespace = true
+
+[*.md]
+max_line_length = unset
+trim_trailing_whitespace = false
+
+[*.py]
+indent_size = 4
+tab_width = 4
+
+[*.yml]
+indent_style = space
+
+[Makefile]
+indent_size = 3
+indent_style = tab

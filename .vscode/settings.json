@@ -1,0 +1,19 @@
+{
+   "Lua.diagnostics.globals": [
+      "SlashCmdList",
+      "CopyTable",
+      "Settings",
+      "ReloadUI",
+      "SettingsPanel",
+      "SELECTED_CHAT_FRAME",
+      "GENERAL_CHAT_DOCK",
+      "FCF_Tab_OnClick",
+      "Minimap",
+      "ObjectiveTrackerFrame",
+      "FCF_GetNumActiveChatFrames",
+      "FCF_SelectDockFrame",
+      "UIParent",
+      "GameTooltip_Hide",
+      "GameTooltip"
+   ]
+}
