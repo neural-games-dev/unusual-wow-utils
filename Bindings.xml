@@ -1,8 +1,9 @@
 <Bindings>
-    <Binding name="ChatTabCycler: Go To Next">
-        ChatTabCycler_NextTab()
-    </Binding>
-    <Binding name="ChatTabCycler: Go To Prev">
-        ChatTabCycler_PrevTab()
-    </Binding>
+   <!-- the functions only exist while the Chat Tab Cycler module is enabled -->
+   <Binding name="ChatTabCycler: Go To Next">
+      if ChatTabCycler_NextTab then ChatTabCycler_NextTab() end
+   </Binding>
+   <Binding name="ChatTabCycler: Go To Prev">
+      if ChatTabCycler_PrevTab then ChatTabCycler_PrevTab() end
+   </Binding>
 </Bindings>

@@ -1,0 +1,35 @@
+## Interface: 120100
+## Notes: A collection of utils to improve your WoW playing experience
+## Title: Unusual WoW Utils
+## Version: 1.0
+## IconTexture: Interface\Icons\Trade_Engineering
+## SavedVariables: AutoDungeonQueueDB, CombatInterfaceManagerDB, CooldownBarGlobalDB, UnusualWowUtilsDB
+## OptionalDeps: CombatInterfaceManager, CooldownBarGlobal, QuestLogCounter
+
+# 3rd party libs
+Libs.xml
+
+# Module registry + enable/disable settings (must load before the modules)
+Core.lua
+
+# Combat Interface Manager (same load order as its original TOC)
+Modules\CombatInterfaceManager\CombatInterfaceManager.lua
+Modules\CombatInterfaceManager\Modules\Chalk.lua
+Modules\CombatInterfaceManager\Modules\Utils.lua
+Modules\CombatInterfaceManager\Modules\Config.lua
+Modules\CombatInterfaceManager\Modules\Logger.lua
+Modules\CombatInterfaceManager\Constants.lua
+# Modules\CombatInterfaceManager\Options.lua
+Modules\CombatInterfaceManager\Slashies.lua
+
+# Cooldown Bar Global
+Modules\CooldownBarGlobal\CooldownBarGlobal.lua
+
+# Quest Log Counter
+Modules\QuestLogCounter\QuestLogCounter.lua
+
+# Auto Dungeon Queue
+Modules\AutoDungeonQueue\AutoDungeonQueue.lua
+
+# Chat Tab Cycler
+Modules\ChatTabCycler\ChatTabCycler.lua

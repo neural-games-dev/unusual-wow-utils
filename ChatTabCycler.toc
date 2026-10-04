@@ -1,6 +1,0 @@
-## Interface: 110107
-## Notes: Cycles through chat tabs using keybindings
-## Title: Chat Tab Cycler
-## Version: 1.0
-
-ChatTabCycler.lua
