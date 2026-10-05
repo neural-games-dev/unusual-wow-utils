@@ -213,7 +213,67 @@ UWU:AddModuleChunk("QuestLogCounter", function()
    }
    local OUTLINE_ORDER = { "thin", "thick", "none" }
 
-   if not BORDERS[qlcDB.border] then
+   -- Backgrounds & borders that addons share through LibSharedMedia (saved as "lsm:<name>"),
+   -- listed after ours. Ones that repeat a texture we already list are left out.
+   local LSM = LibStub("LibSharedMedia-3.0")
+   local LSM_PREFIX = "lsm:"
+   local LSM_SKIPPED = { background = { Solid = true } } -- plain white, which hides the white count
+   -- LibSharedMedia doesn't say how thick a border is, so its borders are drawn tooltip-sized
+   local LSM_BORDER_EDGE_SIZE = 16
+   local LSM_BORDER_INSETS = { left = 4, right = 4, top = 4, bottom = 4 }
+
+   local function SharedMediaName(key)
+      return type(key) == "string" and key:sub(1, #LSM_PREFIX) == LSM_PREFIX and key:sub(#LSM_PREFIX + 1) or nil
+   end
+
+   local function NormalizePath(file)
+      return type(file) == "string" and (file:lower():gsub("/", "\\")) or file
+   end
+
+   -- keys of the LibSharedMedia `mediaType` entries to list (sorted by name), skipping repeats of `presets`
+   local function SharedMediaKeys(mediaType, presets, fileField)
+      local ownFiles = {}
+      for _, preset in pairs(presets) do
+         if preset[fileField] then
+            ownFiles[NormalizePath(preset[fileField])] = true
+         end
+      end
+
+      local skipped = LSM_SKIPPED[mediaType] or {}
+      local keys = {}
+      for _, name in ipairs(LSM:List(mediaType)) do
+         local file = LSM:Fetch(mediaType, name, true) -- nil for LibSharedMedia's own "None"
+         if file and not skipped[name] and not ownFiles[NormalizePath(file)] then
+            table.insert(keys, LSM_PREFIX .. name)
+         end
+      end
+      return keys
+   end
+
+   -- a border/background key's style, or nil if it's from LibSharedMedia & isn't registered (yet)
+   local function GetBorder(key)
+      if BORDERS[key] then
+         return BORDERS[key]
+      end
+
+      local name = SharedMediaName(key)
+      local file = name and LSM:Fetch("border", name, true)
+      return file and { edgeFile = file, edgeSize = LSM_BORDER_EDGE_SIZE, insets = LSM_BORDER_INSETS }
+   end
+
+   local function GetBackground(key)
+      if BACKGROUNDS[key] then
+         return BACKGROUNDS[key]
+      end
+
+      local name = SharedMediaName(key)
+      local file = name and LSM:Fetch("background", name, true)
+      return file and { bgFile = file } -- stretched, since it may be a single image
+   end
+
+   -- a shared-media choice is kept even if its addon hasn't loaded yet (or is gone); the
+   -- default is drawn in its place until it's registered
+   if not BORDERS[qlcDB.border] and not SharedMediaName(qlcDB.border) then
       qlcDB.border = DEFAULT_BORDER
    end
 
@@ -221,7 +281,7 @@ UWU:AddModuleChunk("QuestLogCounter", function()
       qlcDB.outline = DEFAULT_OUTLINE
    end
 
-   if not BACKGROUNDS[qlcDB.background] then
+   if not BACKGROUNDS[qlcDB.background] and not SharedMediaName(qlcDB.background) then
       qlcDB.background = DEFAULT_BACKGROUND
    end
 
@@ -232,8 +292,8 @@ UWU:AddModuleChunk("QuestLogCounter", function()
    local fontFile, fontSize = text:GetFont() -- GameFontNormalLarge's, kept when the outline changes
 
    local function ApplyStyle()
-      local border = BORDERS[qlcDB.border]
-      local background = BACKGROUNDS[qlcDB.background]
+      local border = GetBorder(qlcDB.border) or BORDERS[DEFAULT_BORDER]
+      local background = GetBackground(qlcDB.background) or BACKGROUNDS[DEFAULT_BACKGROUND]
 
       frame:SetBackdrop({
          bgFile = background.bgFile,
@@ -248,6 +308,16 @@ UWU:AddModuleChunk("QuestLogCounter", function()
    end
 
    ApplyStyle()
+
+   -- an addon loading after us may register the saved shared-media choice; draw it once it does
+   LSM.RegisterCallback(frame, "LibSharedMedia_Registered", function(_, mediaType, name)
+      if
+         (mediaType == "border" and SharedMediaName(qlcDB.border) == name)
+         or (mediaType == "background" and SharedMediaName(qlcDB.background) == name)
+      then
+         ApplyStyle()
+      end
+   end)
 
    -- Function to update the quest count
    local function UpdateQuestCount()
@@ -363,6 +433,32 @@ UWU:AddModuleChunk("QuestLogCounter", function()
       return labels
    end
 
+   -- adds the LibSharedMedia entries to a dropdown's values (labeled by their shared names)...
+   local function WithSharedMedia(labels, mediaType, presets, fileField)
+      for _, key in ipairs(SharedMediaKeys(mediaType, presets, fileField)) do
+         labels[key] = SharedMediaName(key)
+      end
+      return labels
+   end
+
+   -- ...& to its order, after ours but before our "None" (which stays last)
+   local function WithSharedMediaOrder(order, mediaType, presets, fileField)
+      local fullOrder = CopyTable(order)
+      local hasNone = fullOrder[#fullOrder] == "none"
+      if hasNone then
+         table.remove(fullOrder)
+      end
+
+      for _, key in ipairs(SharedMediaKeys(mediaType, presets, fileField)) do
+         table.insert(fullOrder, key)
+      end
+
+      if hasNone then
+         table.insert(fullOrder, "none")
+      end
+      return fullOrder
+   end
+
    local options = {
       type = "group",
       name = "UwU: Quest Log Counter",
@@ -422,15 +518,18 @@ UWU:AddModuleChunk("QuestLogCounter", function()
                   name = "Border",
                   type = "select",
                   values = function()
-                     return LabelsOf(BORDERS)
+                     return WithSharedMedia(LabelsOf(BORDERS), "border", BORDERS, "edgeFile")
                   end,
-                  sorting = BORDER_ORDER,
+                  sorting = function()
+                     return WithSharedMediaOrder(BORDER_ORDER, "border", BORDERS, "edgeFile")
+                  end,
                   set = function(_, value)
                      qlcDB.border = value
                      ApplyStyle()
                   end,
                   get = function()
-                     return qlcDB.border
+                     -- what's drawn, i.e. the default while a saved shared-media border isn't available
+                     return GetBorder(qlcDB.border) and qlcDB.border or DEFAULT_BORDER
                   end,
                },
                -- line breaks, so each dropdown sits on its own row
@@ -445,15 +544,17 @@ UWU:AddModuleChunk("QuestLogCounter", function()
                   name = "Background",
                   type = "select",
                   values = function()
-                     return LabelsOf(BACKGROUNDS)
+                     return WithSharedMedia(LabelsOf(BACKGROUNDS), "background", BACKGROUNDS, "bgFile")
                   end,
-                  sorting = BACKGROUND_ORDER,
+                  sorting = function()
+                     return WithSharedMediaOrder(BACKGROUND_ORDER, "background", BACKGROUNDS, "bgFile")
+                  end,
                   set = function(_, value)
                      qlcDB.background = value
                      ApplyStyle()
                   end,
                   get = function()
-                     return qlcDB.background
+                     return GetBackground(qlcDB.background) and qlcDB.background or DEFAULT_BACKGROUND
                   end,
                },
                backgroundBreak = {
