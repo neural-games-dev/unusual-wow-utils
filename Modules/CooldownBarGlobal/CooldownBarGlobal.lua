@@ -494,9 +494,8 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
          end
       end
 
-      -- And add the options table to the actual interface UI
-      -- one page under Unusual WoW Utils in Options > AddOns, with General & Profiles as tabs
-      aceConfigDialog:AddToBlizOptions("Cooldown Bar Global", "Cooldown Bar Global", UWU.SETTINGS_CATEGORY)
+      -- its page under Unusual WoW Utils in Options > AddOns (General, Positioning & Profiles as tabs)
+      -- is added by Core.lua (see AddSettingsPages)
 
       -- Add the event
       CooldownBarGlobal:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")

@@ -45,7 +45,7 @@ Use `/cbg move` to toggle 'Move' mode, which keeps the bar visible so you can dr
 
 ### Quest Log Counter
 
-A counter showing how many quests you have in your log. It sits just left of the quest log, with their tops aligned. It's locked in place; hold Shift and left-click drag to move it, and use `/qlc reset` to put it back.
+A counter showing how many quests you have in your log. It's docked to the quest log and follows it when you move the quest log in Edit Mode. Type `/qlc` to open its options, where the Positioning tab picks where it docks: left of the quest log (the default, tops aligned), right of it (tops aligned), on top of it, or below it (left edge just past the quest log's). The Style tab picks its border & background from the game's own UI textures. These choices are remembered across reloads. It's locked in place; hold Shift and left-click drag to move it on its own, and use `/qlc reset` (or the Reset Position button) to put it back in its docked position.
 
 Use `/qlc hide` and `/qlc show` to hide or show the counter (remembered across reloads). If Combat Interface Manager is set to hide the quest log in combat, the counter hides along with it, and these commands have no effect.
 
