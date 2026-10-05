@@ -10,9 +10,8 @@ local addonName, UWU = ...
 UWU.modules = {}
 UWU.moduleOrder = {}
 
--- Our category in Options > AddOns. Utils with option pages add them as subcategories of it,
--- e.g. AddToBlizOptions(appName, "Some Util", UWU.SETTINGS_CATEGORY). It's registered while
--- UwU loads, before any util's Ace OnInitialize runs, so it always exists by then.
+-- Our category in Options > AddOns. Each loaded util with an options window (`configApp`) gets
+-- a page under it, added by AddSettingsPages in the same order as the /uwu settings page.
 UWU.SETTINGS_CATEGORY = "Unusual WoW Utils"
 
 local function Print(msg)
@@ -100,10 +99,12 @@ UWU:RegisterModule("QuestLogCounter", {
    desc = "Displays a draggable counter showing how many quests you have in your log.",
    slashCommands = { "/qlc" },
    commandHelp = {
+      { "/qlc", "Open or close the options window" },
       { "/qlc show", "Show the counter" },
       { "/qlc hide", "Hide the counter" },
-      { "/qlc reset", "Move the counter back next to the quest log" },
+      { "/qlc reset", "Move the counter back to its location after dragging it" },
    },
+   configApp = "Quest Log Counter",
 })
 
 -- Display names for the bindings in Bindings.xml. They're defined here, not in the modules, so
@@ -310,6 +311,20 @@ function UWU:RegisterSettings()
    LibStub("AceConfigDialog-3.0"):AddToBlizOptions(addonName, UWU.SETTINGS_CATEGORY)
 end
 
+-- One page per loaded util with an options window, under our category in Options > AddOns.
+-- They're added here, in the /uwu page's order, since the game lists them in the order they're
+-- added. A util may register its options table later (e.g. in its Ace OnInitialize); Ace only
+-- needs it once the page is shown.
+function UWU:AddSettingsPages()
+   for _, key in ipairs(self:GetSortedModuleKeys()) do
+      local mod = self.modules[key]
+
+      if mod.configApp and mod.status == "loaded" then
+         LibStub("AceConfigDialog-3.0"):AddToBlizOptions(mod.configApp, mod.title, UWU.SETTINGS_CATEGORY)
+      end
+   end
+end
+
 local COMMAND_COLOR = "|cFFbada55"
 local UTIL_TITLE_COLOR = "|cFF00ffff"
 
@@ -364,6 +379,7 @@ end
 local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
    CombatInterfaceManager = true, -- /cim
+   ["Quest Log Counter"] = true, -- /qlc
 }
 
 hooksecurefunc(LibStub("AceConfigDialog-3.0"), "Open", function(dialog, appName, container)
@@ -392,9 +408,11 @@ loader:SetScript("OnEvent", function(self, _, loadedAddonName)
    -- printed before the modules load, so their own startup lines show as sub-items under it
    Print("Loaded! Type |cFFbada55/uwu help|r for more info.")
 
+   UWU:RegisterSettings() -- its module statuses are only read when the window is drawn
+
    for _, key in ipairs(UWU.moduleOrder) do
       UWU:LoadModule(key)
    end
 
-   UWU:RegisterSettings()
+   UWU:AddSettingsPages() -- once the modules have loaded, so only the running ones get a page
 end)
