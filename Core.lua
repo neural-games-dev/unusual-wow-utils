@@ -83,6 +83,20 @@ UWU:RegisterModule("CombatInterfaceManager", {
    configApp = "CombatInterfaceManager", -- its AceConfig app name, opened by the cog in /uwu
 })
 
+UWU:RegisterModule("Compass", {
+   title = "Compass",
+   desc = "A flight HUD that rotates to show the direction you're facing & moving in.",
+   slashCommands = { "/compass" },
+   commandHelp = {
+      { "/compass", "Open or close the options window" },
+      { "/compass toggle", "Show or hide the compass" },
+      { "/compass show", "Show the compass" },
+      { "/compass hide", "Hide the compass" },
+      { "/compass reset", "Move the compass back to the center of the screen" },
+   },
+   configApp = "Compass",
+})
+
 UWU:RegisterModule("CooldownBarGlobal", {
    title = "Cooldown Bar Global",
    desc = "A customizable bar to visually track the global cooldown.",
@@ -118,6 +132,7 @@ BINDING_NAME_AUTODUNGEONQUEUE_CLEAR = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Cl
 local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
 BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
 BINDING_NAME_CHATTABCYCLER_PREV = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Prev"
+BINDING_NAME_COMPASS_TOGGLE = "Compass: Toggle Visibility"
 
 local KEY_BINDINGS_ICON = "Interface\\Icons\\INV_Misc_Key_03"
 
@@ -379,6 +394,7 @@ end
 local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
    CombatInterfaceManager = true, -- /cim
+   Compass = true, -- /compass
    ["Quest Log Counter"] = true, -- /qlc
 }
 
