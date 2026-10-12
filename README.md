@@ -35,7 +35,7 @@ Hides UI elements (chat, minimap, quest tracker) when you enter combat and resto
 
 A flight HUD that shows which way you're heading. A ring of compass points rotates around a fixed arrow as you turn, with your heading in degrees in the middle. It starts centered on the screen with a semi-transparent, rounded background. Options: `/compass`
 
-Use the options to change the scale and the background's color & opacity. Hold Shift and left-click drag to move it, and use `/compass reset` to re-center it. Bind a key to toggle it in Key Bindings (unassigned by default), or use `/compass toggle`, `/compass show` and `/compass hide`.
+The Style option picks the look: Bars (the default), a horizontal strip of bars that slides sideways as you turn, showing 3 bars on either side of your heading, or Dial. Use the options to change the scale and the background's color & opacity. Hold Shift and left-click drag to move it, and use `/compass reset` to re-center it. Bind a key to toggle it in Key Bindings (unassigned by default), or use `/compass toggle`, `/compass show` and `/compass hide`.
 
 ### Cooldown Bar Global
 

@@ -3,7 +3,7 @@
 ## Title: Unusual WoW Utils
 ## Version: 1.0
 ## IconTexture: Interface\Icons\Trade_Engineering
-## SavedVariables: AutoDungeonQueueDB, CombatInterfaceManagerDB, CooldownBarGlobalDB, UnusualWowUtilsDB
+## SavedVariables: AutoDungeonQueueDB, CombatInterfaceManagerDB, CompassDB, CooldownBarGlobalDB, UnusualWowUtilsDB
 ## OptionalDeps: CombatInterfaceManager, CooldownBarGlobal, QuestLogCounter
 
 # 3rd party libs
