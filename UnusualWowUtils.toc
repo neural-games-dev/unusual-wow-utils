@@ -22,6 +22,9 @@ Modules\CombatInterfaceManager\Constants.lua
 # Modules\CombatInterfaceManager\Options.lua
 Modules\CombatInterfaceManager\Slashies.lua
 
+# Compass
+Modules\Compass\Compass.lua
+
 # Cooldown Bar Global
 Modules\CooldownBarGlobal\CooldownBarGlobal.lua
 
