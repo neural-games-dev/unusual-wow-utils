@@ -60,7 +60,9 @@ UWU:AddModuleChunk("Compass", function()
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
 
-      if type(db.color) ~= "table" then
+      local color = db.color
+      if type(color) ~= "table" or type(color.r) ~= "number" or type(color.g) ~= "number"
+         or type(color.b) ~= "number" or type(color.a) ~= "number" then
          db.color = CopyTable(DEFAULT_COLOR)
       end
    end
@@ -362,6 +364,7 @@ UWU:AddModuleChunk("Compass", function()
    local function SetShown(shown)
       db.hidden = not shown
       UpdateVisibility()
+      LibStub("AceConfigRegistry-3.0"):NotifyChange(addonName) -- refresh the Show checkbox if it's open
    end
 
    -- the keybind in Bindings.xml

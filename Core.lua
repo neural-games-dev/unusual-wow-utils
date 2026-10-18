@@ -85,7 +85,7 @@ UWU:RegisterModule("CombatInterfaceManager", {
 
 UWU:RegisterModule("Compass", {
    title = "Compass",
-   desc = "A flight HUD that rotates to show the direction you're facing & moving in.",
+   desc = "A flight HUD that rotates to show the direction you're facing.",
    slashCommands = { "/compass" },
    commandHelp = {
       { "/compass", "Open or close the options window" },
