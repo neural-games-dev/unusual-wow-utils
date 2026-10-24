@@ -382,21 +382,23 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    frame:SetUserPlaced(false) -- we save the position ourselves, not the game's layout cache
    ApplyPosition()
    frame:SetClampedToScreen(true)
-   frame:EnableMouse(true)
-   frame:RegisterForDrag("LeftButton")
+   -- The background (only as big as the visible statuses) takes the mouse, not the frame (always the whole
+   -- stack's size), so hidden statuses' empty space doesn't block clicks or show the tooltip.
+   background:EnableMouse(true)
+   background:RegisterForDrag("LeftButton")
    -- locked by default; hold Shift while left-click dragging to move it
-   frame:SetScript("OnDragStart", function(self)
+   background:SetScript("OnDragStart", function()
       if IsShiftKeyDown() then
-         self:StartMoving()
+         frame:StartMoving()
       end
    end)
-   frame:SetScript("OnDragStop", function(self)
-      self:StopMovingOrSizing()
-      self:SetUserPlaced(false)
+   background:SetScript("OnDragStop", function()
+      frame:StopMovingOrSizing()
+      frame:SetUserPlaced(false)
       SaveCenterPosition()
    end)
 
-   frame:SetScript("OnEnter", function(self)
+   background:SetScript("OnEnter", function(self)
       GameTooltip:SetOwner(self, "ANCHOR_NONE")
       GameTooltip:ClearAllPoints()
       GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
@@ -404,7 +406,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       GameTooltip:AddLine("shift+left-mouse to drag", 1, 1, 1)
       GameTooltip:Show()
    end)
-   frame:SetScript("OnLeave", GameTooltip_Hide)
+   background:SetScript("OnLeave", GameTooltip_Hide)
 
    local function SetPosition(x, y)
       frame:StopMovingOrSizing()
