@@ -20,4 +20,9 @@
    <Binding name="CHATTABCYCLER_PREV" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if ChatTabCycler_PrevTab then ChatTabCycler_PrevTab() end
    </Binding>
+
+   <!-- Compass (the function only exists while its module is enabled) -->
+   <Binding name="COMPASS_TOGGLE" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if Compass_Toggle then Compass_Toggle() end
+   </Binding>
 </Bindings>
