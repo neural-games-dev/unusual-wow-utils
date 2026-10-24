@@ -38,6 +38,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       self:RegisterMinimapListener()
       self:RegisterObjectiveTrackerListener()
       self:RegisterZoneMapListener()
+      self:RegisterCameraViewListener()
 
       -- checking for and storing loaded state of notable addons
       self.utils:SetDbTableItem("isLoaded", "itemLock", C_AddOns.IsAddOnLoaded("ItemLock"))
@@ -173,5 +174,32 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       f:RegisterEvent("PLAYER_REGEN_DISABLED") -- Event for entering combat
       f:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Event for leaving combat
       f:SetScript("OnEvent", ToggleZoneMap)
+   end
+
+   function CombatInterfaceManager:RegisterCameraViewListener()
+      -- recalls the user's saved camera views (the "Set View n" keybindings); a slot that was never saved does nothing
+      local function SwitchCameraView(_self, event)
+         local cameraView = self.db.profile.cameraView
+         if not cameraView then
+            return
+         end
+
+         local view
+         if event == "PLAYER_REGEN_DISABLED" then
+            view = cameraView.onEnterCombat
+         elseif event == "PLAYER_REGEN_ENABLED" then
+            view = cameraView.onLeaveCombat
+         end
+
+         if view and view >= 1 and view <= 5 then
+            self.logger:Debug("Switching to camera view " .. view)
+            SetView(view)
+         end
+      end
+
+      local f = CreateFrame("Frame")
+      f:RegisterEvent("PLAYER_REGEN_DISABLED") -- Event for entering combat
+      f:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Event for leaving combat
+      f:SetScript("OnEvent", SwitchCameraView)
    end
 end)

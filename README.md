@@ -29,7 +29,7 @@ This util allows you to go whichever direction your heart desires, PLUS, it has 
 
 ### Combat Interface Manager
 
-Hides UI elements (chat, minimap, quest tracker) when you enter combat and restores them when you leave. Options: `/cim`
+Hides UI elements (chat, minimap, quest tracker) when you enter combat and restores them when you leave. It can also switch to one of your saved camera views (the "Set View 1-5" keybindings) when you enter and/or leave combat. Options: `/cim`
 
 ### Compass
 
