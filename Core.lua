@@ -108,6 +108,17 @@ UWU:RegisterModule("CooldownBarGlobal", {
    configApp = "Cooldown Bar Global",
 })
 
+UWU:RegisterModule("ObviousStatuses", {
+   title = "Obvious Statuses",
+   desc = "Shows your dragonriding, combat and Zidormi phase (past or present) states as a stack of rectangles.",
+   slashCommands = { "/os" },
+   commandHelp = {
+      { "/os", "Open or close the options window" },
+      { "/os debug", "List this zone's map IDs and your buffs (for setting up the phase status)" },
+   },
+   configApp = "ObviousStatuses",
+})
+
 UWU:RegisterModule("QuestLogCounter", {
    title = "Quest Log Counter",
    desc = "Displays a draggable counter showing how many quests you have in your log.",
@@ -395,6 +406,7 @@ local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
    CombatInterfaceManager = true, -- /cim
    Compass = true, -- /compass
+   ObviousStatuses = true, -- /os
    ["Quest Log Counter"] = true, -- /qlc
 }
 

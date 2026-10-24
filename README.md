@@ -49,6 +49,14 @@ Use `/cbg move` to toggle 'Move' mode, which keeps the bar visible so you can dr
 >
 > If you have a link to the original (e.g. an old GitHub or CurseForge page), please post a message & share it, and I'll properly link to it here.
 
+### Obvious Statuses
+
+Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), dragonriding ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). Options: `/os`
+
+The dragonriding and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. Hold Shift and left-click drag to move it, or use the Positioning tab.
+
+Zidormi has no API, so the phase status only works in zones listed in `PHASE_ZONES` in `Modules/ObviousStatuses/ObviousStatuses.lua`. Stand in a zone, in the past and in the present, and use `/os debug` to find the values to add.
+
 ### Quest Log Counter
 
 A counter showing how many quests you have in your log. It's docked to the quest log and follows it when you move the quest log in Edit Mode. Type `/qlc` to open its options, where the Positioning tab picks where it docks: left of the quest log (the default, tops aligned), right of it (tops aligned), on top of it, or below it (left edge just past the quest log's). The Style tab picks its border & background from the game's own UI textures, plus any that your other add-ons share through LibSharedMedia (listed after the built-in ones). These choices are remembered across reloads. It's locked in place; hold Shift and left-click drag to move it on its own, and use `/qlc reset` (or the Reset Position button) to put it back in its docked position.

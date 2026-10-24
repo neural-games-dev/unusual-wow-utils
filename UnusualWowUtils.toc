@@ -3,7 +3,7 @@
 ## Title: Unusual WoW Utils
 ## Version: 1.0
 ## IconTexture: Interface\Icons\Trade_Engineering
-## SavedVariables: AutoDungeonQueueDB, CombatInterfaceManagerDB, CompassDB, CooldownBarGlobalDB, UnusualWowUtilsDB
+## SavedVariables: AutoDungeonQueueDB, CombatInterfaceManagerDB, CompassDB, CooldownBarGlobalDB, ObviousStatusesDB, UnusualWowUtilsDB
 ## OptionalDeps: CombatInterfaceManager, CooldownBarGlobal, QuestLogCounter
 
 # 3rd party libs
@@ -27,6 +27,9 @@ Modules\Compass\Compass.lua
 
 # Cooldown Bar Global
 Modules\CooldownBarGlobal\CooldownBarGlobal.lua
+
+# Obvious Statuses
+Modules\ObviousStatuses\ObviousStatuses.lua
 
 # Quest Log Counter
 Modules\QuestLogCounter\QuestLogCounter.lua
