@@ -14,6 +14,11 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          objectiveTracker = false,
          zoneMap = false,
       },
+      -- which saved camera view (the "Set View n" keybindings, 1-5) to switch to; 0 means leave the camera alone
+      cameraView = {
+         onEnterCombat = 0,
+         onLeaveCombat = 0,
+      },
       isLoaded = {
          itemLock = nil,
          prat = nil,

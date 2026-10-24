@@ -13,6 +13,10 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
    --## ===============================================================================================
    local Config = CombatInterfaceManager:NewModule("Config")
 
+   -- 0 = leave the camera alone, 1-5 = the "Set View n" keybindings
+   local cameraViewChoices = { [0] = "None", "Set View 1", "Set View 2", "Set View 3", "Set View 4", "Set View 5" }
+   local cameraViewSorting = { 0, 1, 2, 3, 4, 5 }
+
    --## ==========================================================================
    --## DEFINING THE MAIN OPTIONS FRAME
    --## ==========================================================================
@@ -22,8 +26,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          "CombatInterfaceManager",
          self:GetBlizzOptionsFrame(cim)
       )
-      -- the smallest an Ace window can be; fits the label & 4 toggles (resizing is turned off in Core.lua)
-      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 200)
+      -- the smallest an Ace window can be; fits the labels, 4 toggles & 2 dropdowns (resizing is turned off in Core.lua)
+      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 320)
       -- its page under Unusual WoW Utils in Options > AddOns is added by Core.lua (see AddSettingsPages)
    end
 
@@ -88,6 +92,39 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
                   cim.utils:SetDbTableItem("isHiding", "zoneMap", value)
                end,
                type = "toggle",
+            },
+            cameraIntro = {
+               name = "Switch camera view in combat:",
+               order = 200,
+               type = "description",
+            },
+            cameraViewOnEnter = {
+               desc = "The saved camera view to switch to when combat starts. Save views with the Save View keybindings; a view that was never saved does nothing.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.onEnterCombat")
+               end,
+               name = "Entering",
+               order = 201,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "onEnterCombat", value)
+               end,
+               sorting = cameraViewSorting,
+               type = "select",
+               values = cameraViewChoices,
+            },
+            cameraViewOnLeave = {
+               desc = "The saved camera view to switch to when combat ends.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.onLeaveCombat")
+               end,
+               name = "Leaving",
+               order = 202,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "onLeaveCombat", value)
+               end,
+               sorting = cameraViewSorting,
+               type = "select",
+               values = cameraViewChoices,
             },
          },
       }
