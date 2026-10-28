@@ -110,7 +110,7 @@ UWU:RegisterModule("CooldownBarGlobal", {
 
 UWU:RegisterModule("ObviousStatuses", {
    title = "Obvious Statuses",
-   desc = "Shows your dragonriding, combat and Zidormi phase (past or present) states as a stack of rectangles.",
+   desc = "Shows your dragonriding, combat and Zidormi phase (past or present) states as a stack of rectangles, plus whether your target is in range of a spell.",
    slashCommands = { "/os" },
    commandHelp = {
       { "/os", "Open or close the options window" },

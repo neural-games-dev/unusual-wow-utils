@@ -55,6 +55,8 @@ Shows up to three statuses as a stack of rectangles, in your faction's color. Fr
 
 The dragonriding and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. Hold Shift and left-click drag to move it, or use the Positioning tab.
 
+It also has a range indicator: a separate square that shows whether your target is in range of a spell you name on the Range tab. An open eye under a green tint means it's in range, and a closed eye under a red tint means it's too far away. With no target (or one the spell can't be cast on), it shows the spell's icon, greyed out. If no spell by that name is found, it shows the red question mark. It's hidden while no spell is named. The Range tab also sets its scale and position, and you can hold Shift and left-click drag it on its own.
+
 Zidormi has no API, so the phase status only works in zones listed in `PHASE_ZONES` in `Modules/ObviousStatuses/ObviousStatuses.lua`. Stand in a zone, in the past and in the present, and use `/os debug` to find the values to add.
 
 ### Quest Log Counter

@@ -22,7 +22,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       TOOLTIP = "Tooltip",
    }
 
-   local database = LibStub("AceDB-3.0"):New("ObviousStatusesDB", {
+   local MIN_RANGE_SCALE, MAX_RANGE_SCALE = 0.5, 3
+
+   local DEFAULTS = {
       profile = {
          strata = DEFAULT_STRATA,
          alwaysShowPhase = false, -- show "Present" in zones that have no Zidormi phase (else hide the rectangle)
@@ -34,8 +36,15 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          -- the stack's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
          y = 0,
+         -- the range indicator (the Range tab)
+         rangeSpell = "", -- the name of the spell whose range is checked (blank hides the indicator)
+         rangeScale = 1,
+         rangeX = 0, -- its center, as an offset from the center of the screen (just below the statuses)
+         rangeY = -150,
       },
-   }, true)
+   }
+
+   local database = LibStub("AceDB-3.0"):New("ObviousStatusesDB", DEFAULTS, true)
    local db = database.profile
 
    -- fixes up bad saved values
@@ -51,6 +60,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       db.hidePhaseInCombat = db.hidePhaseInCombat == true
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
+      db.rangeSpell = type(db.rangeSpell) == "string" and strtrim(db.rangeSpell) or ""
+      db.rangeScale = Clamp(tonumber(db.rangeScale) or DEFAULTS.profile.rangeScale, MIN_RANGE_SCALE, MAX_RANGE_SCALE)
+      db.rangeX = tonumber(db.rangeX) or DEFAULTS.profile.rangeX
+      db.rangeY = tonumber(db.rangeY) or DEFAULTS.profile.rangeY
    end
 
    ValidateSettings()
@@ -357,66 +370,214 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    UpdateAll()
 
    --## Position ---------------------------------------------------------------
-   -- Saved as the frame's center offset from the screen's center, in screen (UIParent) units.
-   local function ApplyPosition()
-      frame:ClearAllPoints()
-      frame:SetPoint("CENTER", UIParent, "CENTER", db.x, db.y)
+   -- Where a movable frame sits. It's saved as the frame's center offset from the screen's center, in screen
+   -- (UIParent) units whatever its scale is, so the X/Y offsets in the settings always mean the same thing.
+   -- `xKey` & `yKey` name its offsets in the settings, and `scaleKey` its scale (if it has one).
+   local function CreatePlacement(target, xKey, yKey, scaleKey)
+      local placement = {}
+
+      function placement.Get()
+         return db[xKey], db[yKey]
+      end
+
+      function placement.Apply()
+         local scale = scaleKey and db[scaleKey] or 1
+         target:ClearAllPoints()
+         -- anchor offsets are in the frame's own (scaled) units
+         target:SetPoint("CENTER", UIParent, "CENTER", db[xKey] / scale, db[yKey] / scale)
+      end
+
+      function placement.Set(x, y)
+         target:StopMovingOrSizing()
+         db[xKey], db[yKey] = x, y
+         placement.Apply()
+      end
+
+      function placement.Reset()
+         placement.Set(DEFAULTS.profile[xKey], DEFAULTS.profile[yKey])
+      end
+
+      -- Saves the frame's current spot as center offsets (after it's been dragged)
+      local function SaveCenterPosition()
+         local frameX, frameY = target:GetCenter()
+         local screenX, screenY = UIParent:GetCenter()
+         if not (frameX and screenX) then
+            return
+         end
+
+         local frameScale, screenScale = target:GetEffectiveScale(), UIParent:GetEffectiveScale()
+         db[xKey] = math.floor((frameX * frameScale - screenX * screenScale) / screenScale + 0.5)
+         db[yKey] = math.floor((frameY * frameScale - screenY * screenScale) / screenScale + 0.5)
+         placement.Apply() -- back to a single CENTER anchor
+         LibStub("AceConfigRegistry-3.0"):NotifyChange(addonName) -- refresh the offsets in the settings if open
+      end
+
+      -- `region` takes the mouse & moves the frame. Its tooltip is `title`, plus the lines `AddLines` adds.
+      function placement.EnableDragging(region, title, AddLines)
+         target:SetMovable(true) -- before SetUserPlaced, which errors on a frame that isn't movable
+         target:SetUserPlaced(false) -- we save the position ourselves, not the game's layout cache
+         target:SetClampedToScreen(true)
+         region:EnableMouse(true)
+         region:RegisterForDrag("LeftButton")
+         -- locked by default; hold Shift while left-click dragging to move it
+         region:SetScript("OnDragStart", function()
+            if IsShiftKeyDown() then
+               target:StartMoving()
+            end
+         end)
+         region:SetScript("OnDragStop", function()
+            target:StopMovingOrSizing()
+            target:SetUserPlaced(false)
+            SaveCenterPosition()
+         end)
+
+         region:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+            GameTooltip:SetText(title)
+            if AddLines then
+               AddLines(GameTooltip)
+            end
+            GameTooltip:AddLine("shift+left-mouse to drag", 1, 1, 1)
+            GameTooltip:Show()
+         end)
+         region:SetScript("OnLeave", GameTooltip_Hide)
+      end
+
+      return placement
    end
 
-   -- Saves the frame's current spot as center offsets (after it's been dragged)
-   local function SaveCenterPosition()
-      local frameX, frameY = frame:GetCenter()
-      local screenX, screenY = UIParent:GetCenter()
-      if not (frameX and screenX) then
+   local statusesPlacement = CreatePlacement(frame, "x", "y")
+   statusesPlacement.Apply()
+   -- The background (only as big as the visible statuses) takes the mouse, not the frame (always the whole
+   -- stack's size), so hidden statuses' empty space doesn't block clicks or show the tooltip.
+   statusesPlacement.EnableDragging(background, "Obvious Statuses")
+
+   --## ==========================================================================
+   --## RANGE INDICATOR
+   --## ==========================================================================
+   -- A square showing whether your target is in range of the spell named in the Range tab, on its own frame
+   -- (moved & scaled apart from the statuses). It's hidden while no spell is named.
+   local RANGE_SIZE = 48 -- as tall as a status rectangle (at a scale of 1)
+   local RANGE_INTERVAL = 0.1 -- range changes have no event, so it's checked this often (in seconds)
+   local RANGE_ICONS = {
+      inRange = "Interface\\Icons\\Spell_Shadow_MindSteal", -- an open eye: close enough
+      outOfRange = "Interface\\Icons\\Spell_Nature_Sleep", -- a closed eye: too far away
+      unknownSpell = "Interface\\Icons\\INV_Misc_QuestionMark", -- the game's red question mark
+   }
+   -- the slightly dark, semi-transparent colors laid over those icons (red, green, blue, opacity)
+   local RANGE_TINTS = {
+      inRange = { 0, 0.7, 0, 0.5 }, -- green
+      outOfRange = { 0.7, 0, 0, 0.7 }, -- red
+   }
+
+   local rangeFrame = CreateFrame("Frame", "UWUObviousStatusesRangeFrame", UIParent)
+   rangeFrame:SetSize(RANGE_SIZE, RANGE_SIZE)
+   rangeFrame:SetScale(db.rangeScale)
+
+   -- one layer below the statuses' strata (or the same, if theirs is already the lowest)
+   local function ApplyRangeStrata()
+      local index = tIndexOf(STRATA_ORDER, db.strata) or 1
+      rangeFrame:SetFrameStrata(STRATA_ORDER[math.max(index - 1, 1)])
+   end
+
+   ApplyRangeStrata()
+
+   local rangeIcon = rangeFrame:CreateTexture(nil, "ARTWORK")
+   rangeIcon:SetAllPoints()
+
+   -- a semi-transparent color over the icon while the target is in range (green) or too far away (red)
+   local rangeTint = rangeFrame:CreateTexture(nil, "OVERLAY")
+   rangeTint:SetAllPoints(rangeIcon)
+   rangeTint:Hide()
+
+   -- the named spell's info, or nil if the game doesn't know a spell by that name
+   local function GetRangeSpell()
+      if db.rangeSpell == "" then
+         return nil
+      end
+      return C_Spell.GetSpellInfo(db.rangeSpell)
+   end
+
+   -- true or false, or nil when it can't be told: no target, one the spell can't be cast on (e.g. a damage
+   -- spell on a friend), a spell with no range, or a range the game keeps secret from addons
+   local function IsTargetInRange(spellID)
+      if not UnitExists("target") then
+         return nil
+      end
+
+      local inRange = C_Spell.IsSpellInRange(spellID, "target")
+      if issecretvalue and issecretvalue(inRange) then
+         return nil
+      end
+      return inRange
+   end
+
+   -- `tint` is the color to lay over the icon, if any
+   local function SetRangeIcon(texture, desaturated, tint)
+      rangeIcon:SetTexture(texture)
+      rangeIcon:SetDesaturated(desaturated == true)
+      if tint then
+         rangeTint:SetColorTexture(unpack(tint))
+      end
+      rangeTint:SetShown(tint ~= nil)
+   end
+
+   local function RefreshRange()
+      local spell = GetRangeSpell()
+      if not spell then
+         SetRangeIcon(RANGE_ICONS.unknownSpell)
          return
       end
 
-      local frameScale, screenScale = frame:GetEffectiveScale(), UIParent:GetEffectiveScale()
-      db.x = math.floor((frameX * frameScale - screenX * screenScale) / screenScale + 0.5)
-      db.y = math.floor((frameY * frameScale - screenY * screenScale) / screenScale + 0.5)
-      ApplyPosition() -- back to a single CENTER anchor
-      LibStub("AceConfigRegistry-3.0"):NotifyChange(addonName) -- refresh the Positioning tab if it's open
+      local inRange = IsTargetInRange(spell.spellID)
+      if inRange == nil then
+         SetRangeIcon(spell.iconID, true) -- the spell's own icon, greyed out, until there's something to check
+      elseif inRange then
+         SetRangeIcon(RANGE_ICONS.inRange, false, RANGE_TINTS.inRange)
+      else
+         SetRangeIcon(RANGE_ICONS.outOfRange, false, RANGE_TINTS.outOfRange)
+      end
    end
 
-   frame:SetMovable(true) -- before SetUserPlaced, which errors on a frame that isn't movable
-   frame:SetUserPlaced(false) -- we save the position ourselves, not the game's layout cache
-   ApplyPosition()
-   frame:SetClampedToScreen(true)
-   -- The background (only as big as the visible statuses) takes the mouse, not the frame (always the whole
-   -- stack's size), so hidden statuses' empty space doesn't block clicks or show the tooltip.
-   background:EnableMouse(true)
-   background:RegisterForDrag("LeftButton")
-   -- locked by default; hold Shift while left-click dragging to move it
-   background:SetScript("OnDragStart", function()
-      if IsShiftKeyDown() then
-         frame:StartMoving()
+   local function UpdateRangeShown()
+      rangeFrame:SetShown(db.rangeSpell ~= "")
+      RefreshRange()
+   end
+
+   -- only runs while the indicator is showing
+   local sinceRangeCheck = 0
+   rangeFrame:SetScript("OnUpdate", function(_, elapsed)
+      sinceRangeCheck = sinceRangeCheck + elapsed
+      if sinceRangeCheck >= RANGE_INTERVAL then
+         sinceRangeCheck = 0
+         RefreshRange()
       end
    end)
-   background:SetScript("OnDragStop", function()
-      frame:StopMovingOrSizing()
-      frame:SetUserPlaced(false)
-      SaveCenterPosition()
+
+   -- a new target shows straight away, instead of on the next check
+   rangeFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+   rangeFrame:SetScript("OnEvent", RefreshRange)
+
+   local rangePlacement = CreatePlacement(rangeFrame, "rangeX", "rangeY", "rangeScale")
+   rangePlacement.Apply()
+   rangePlacement.EnableDragging(rangeFrame, "Range Indicator", function(tooltip)
+      local spell = GetRangeSpell()
+      if spell then
+         tooltip:AddLine("Checking: " .. spell.name, 1, 0.82, 0)
+      else
+         tooltip:AddLine('No spell called "' .. db.rangeSpell .. '" was found', 1, 0.2, 0.2)
+      end
    end)
 
-   background:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_NONE")
-      GameTooltip:ClearAllPoints()
-      GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-      GameTooltip:SetText("Obvious Statuses")
-      GameTooltip:AddLine("shift+left-mouse to drag", 1, 1, 1)
-      GameTooltip:Show()
-   end)
-   background:SetScript("OnLeave", GameTooltip_Hide)
-
-   local function SetPosition(x, y)
-      frame:StopMovingOrSizing()
-      db.x, db.y = x, y
-      ApplyPosition()
+   local function SetRangeScale(scale)
+      db.rangeScale = Clamp(scale, MIN_RANGE_SCALE, MAX_RANGE_SCALE)
+      rangeFrame:SetScale(db.rangeScale)
+      rangePlacement.Apply() -- keeps the same spot on screen
    end
 
-   local function ResetPosition()
-      SetPosition(0, 0)
-   end
+   UpdateRangeShown()
 
    --## ==========================================================================
    --## SETTINGS WINDOW (/os, the /uwu cog & Options > AddOns)
@@ -424,42 +585,46 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local APP_NAME = "ObviousStatuses"
 
    --## Positioning tab ---------------------------------------------------------
-   local POSITION_NUDGE = 1 -- how far the -/+ buttons move the statuses
+   local POSITION_NUDGE = 1 -- how far the -/+ buttons move a frame
 
-   local function OffsetInput(axis, label, order)
+   -- `what` names the frame in descriptions, e.g. "the statuses"
+   local function OffsetInput(placement, what, axis, label, order)
       return {
          order = order,
          name = label,
-         desc = "Offset of the statuses' center from the center of the screen.",
+         desc = "Offset of the center of " .. what .. " from the center of the screen.",
          type = "input",
          get = function()
-            return tostring(db[axis])
+            local x, y = placement.Get()
+            return tostring(axis == "x" and x or y)
          end,
          validate = function(_, value)
             return tonumber(value) ~= nil or "Please enter a number."
          end,
          set = function(_, value)
+            local x, y = placement.Get()
             if axis == "x" then
-               SetPosition(tonumber(value), db.y)
+               placement.Set(tonumber(value), y)
             else
-               SetPosition(db.x, tonumber(value))
+               placement.Set(x, tonumber(value))
             end
          end,
       }
    end
 
-   local function NudgeButton(axis, direction, order)
+   local function NudgeButton(placement, axis, direction, order)
       return {
          order = order,
          name = direction < 0 and "-" or "+",
          type = "execute",
          width = 0.5,
          func = function()
+            local x, y = placement.Get()
             local delta = direction * POSITION_NUDGE
             if axis == "x" then
-               SetPosition(db.x + delta, db.y)
+               placement.Set(x + delta, y)
             else
-               SetPosition(db.x, db.y + delta)
+               placement.Set(x, y + delta)
             end
          end,
       }
@@ -468,6 +633,46 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- forces the next options onto a new row
    local function LineBreak(order)
       return { order = order, name = "", type = "description", width = "full" }
+   end
+
+   -- Adds the X/Y offsets, nudge, centering & reset options for a placement to `args`, ordered from `order`.
+   -- `what` names the frame in descriptions, and `defaultSpot` where Reset Position puts it.
+   local function AddPositionOptions(args, placement, what, defaultSpot, order)
+      args.xOffset = OffsetInput(placement, what, "x", "X Offset", order)
+      args.yOffset = OffsetInput(placement, what, "y", "Y Offset", order + 1)
+      args.nudgeBreak = LineBreak(order + 9)
+      args.xMinus = NudgeButton(placement, "x", -1, order + 10)
+      args.xPlus = NudgeButton(placement, "x", 1, order + 11)
+      args.yMinus = NudgeButton(placement, "y", -1, order + 12)
+      args.yPlus = NudgeButton(placement, "y", 1, order + 13)
+      args.centerBreak = LineBreak(order + 19)
+      args.centerHorizontally = {
+         order = order + 20,
+         name = "Center Horizontally",
+         type = "execute",
+         func = function()
+            local _, y = placement.Get()
+            placement.Set(0, y)
+         end,
+      }
+      args.centerVertically = {
+         order = order + 21,
+         name = "Center Vertically",
+         type = "execute",
+         func = function()
+            local x = placement.Get()
+            placement.Set(x, 0)
+         end,
+      }
+      args.resetBreak = LineBreak(order + 29)
+      args.resetPosition = {
+         order = order + 30,
+         name = "Reset Position",
+         desc = "Move " .. what .. " back to " .. defaultSpot .. ".",
+         type = "execute",
+         func = placement.Reset,
+      }
+      return args
    end
 
    local function Checkbox(order, name, desc, key)
@@ -491,7 +696,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       name = "Positioning",
       type = "group",
       order = 2,
-      args = {
+      args = AddPositionOptions({
          intro = {
             order = 1,
             name = "Position the statuses precisely, relative to the center of the screen. "
@@ -499,47 +704,87 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             type = "description",
             width = "full",
          },
-         xOffset = OffsetInput("x", "X Offset", 10),
-         yOffset = OffsetInput("y", "Y Offset", 11),
-         nudgeBreak = LineBreak(19),
-         xMinus = NudgeButton("x", -1, 20),
-         xPlus = NudgeButton("x", 1, 21),
-         yMinus = NudgeButton("y", -1, 22),
-         yPlus = NudgeButton("y", 1, 23),
-         centerBreak = LineBreak(29),
-         centerHorizontally = {
-            order = 30,
-            name = "Center Horizontally",
-            type = "execute",
-            func = function()
-               SetPosition(0, db.y)
+      }, statusesPlacement, "the statuses", "their default spot, the center of the screen", 10),
+   }
+
+   --## Range tab ---------------------------------------------------------------
+   local rangeOptions = {
+      name = "Range",
+      type = "group",
+      order = 3,
+      args = AddPositionOptions({
+         intro = {
+            order = 1,
+            name = "Shows whether your target is in range of a spell: an open eye under a green tint when it is, "
+               .. "and a closed eye under a red tint when it's too far away. With no target (or one the spell can't be cast on), it shows the "
+               .. "spell's icon, greyed out. A red question mark means no spell by that name was found.\n\n"
+               .. "Hold Shift and drag it with the left mouse button to move it.\n ",
+            type = "description",
+            width = "full",
+         },
+         spell = {
+            order = 2,
+            name = "Spell",
+            desc = "The name of the spell to check your target's range with, e.g. one of your attacks or heals. "
+               .. "Leave it blank to hide the range indicator.",
+            type = "input",
+            width = "full",
+            get = function()
+               return db.rangeSpell
+            end,
+            set = function(_, value)
+               db.rangeSpell = strtrim(value)
+               UpdateRangeShown()
             end,
          },
-         centerVertically = {
-            order = 31,
-            name = "Center Vertically",
-            type = "execute",
-            func = function()
-               SetPosition(db.x, 0)
+         spellStatus = {
+            order = 3,
+            name = function()
+               if db.rangeSpell == "" then
+                  return "No spell set, so the range indicator is hidden."
+               end
+
+               local spell = GetRangeSpell()
+               if not spell then
+                  return '|cFFff3333No spell called "' .. db.rangeSpell .. '" was found.|r'
+               end
+               return "Checking: |T" .. spell.iconID .. ":0|t " .. spell.name
+            end,
+            type = "description",
+            width = "full",
+         },
+         scale = {
+            order = 4,
+            name = "Scale",
+            desc = "Resize the range indicator.",
+            type = "range",
+            min = MIN_RANGE_SCALE,
+            max = MAX_RANGE_SCALE,
+            step = 0.05,
+            isPercent = true,
+            width = "full",
+            get = function()
+               return db.rangeScale
+            end,
+            set = function(_, value)
+               SetRangeScale(value)
             end,
          },
-         resetBreak = LineBreak(39),
-         resetPosition = {
-            order = 40,
-            name = "Reset Position",
-            desc = "Move the statuses back to their default spot, the center of the screen.",
-            type = "execute",
-            func = ResetPosition,
+         positionHeader = {
+            order = 5,
+            name = "Position",
+            type = "header",
          },
-      },
+      }, rangePlacement, "the range indicator", "its default spot, just below the center of the screen", 10),
    }
 
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
-      childGroups = "tab", -- General & Positioning as tabs (in /os and in Options > AddOns)
+      childGroups = "tab", -- General, Positioning & Range as tabs (in /os and in Options > AddOns)
       args = {
          positioning = positioningOptions,
+         range = rangeOptions,
          general = {
             name = "General",
             type = "group",
@@ -548,8 +793,8 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                strata = {
                   order = 0,
                   name = "Strata",
-                  desc = "Which layer of the screen the statuses are drawn on. "
-                     .. "Higher layers draw in front of lower ones.",
+                  desc = "Which layer of the screen the statuses are drawn on (the range indicator is drawn one "
+                     .. "layer lower). Higher layers draw in front of lower ones.",
                   type = "select",
                   values = STRATA,
                   sorting = STRATA_ORDER,
@@ -559,6 +804,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                   set = function(_, value)
                      db.strata = value
                      frame:SetFrameStrata(value)
+                     ApplyRangeStrata()
                   end,
                },
                reverse = Checkbox(
@@ -614,8 +860,12 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       db = database.profile
       ValidateSettings()
       frame:SetFrameStrata(db.strata)
-      ApplyPosition()
+      statusesPlacement.Apply()
       UpdateAll()
+      ApplyRangeStrata()
+      rangeFrame:SetScale(db.rangeScale)
+      rangePlacement.Apply()
+      UpdateRangeShown()
       LibStub("AceConfigRegistry-3.0"):NotifyChange(APP_NAME)
    end
 
