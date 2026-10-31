@@ -18,6 +18,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       cameraView = {
          onEnterCombat = 0,
          onLeaveCombat = 0,
+         onMount = 0,
+         onDismount = 0,
       },
       isLoaded = {
          itemLock = nil,

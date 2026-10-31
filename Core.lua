@@ -74,7 +74,7 @@ end
 --## ==========================================================================
 UWU:RegisterModule("CombatInterfaceManager", {
    title = "Combat Interface Manager",
-   desc = "Hides & restores UI elements (chat, minimap, quest tracker) and can switch your saved camera view when you enter & leave combat.",
+   desc = "Hides & restores UI elements (chat, minimap, quest tracker) and can switch your saved camera view when you enter & leave combat or mount & dismount.",
    slashCommands = { "/cim" },
    commandHelp = { -- listed by /uwu help
       { "/cim", "Open or close the options window" },
