@@ -23,6 +23,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    }
 
    local MIN_RANGE_SCALE, MAX_RANGE_SCALE = 0.5, 3
+   local MIN_RANGE_CROSS_SCALE, MAX_RANGE_CROSS_SCALE = 0.5, 3
 
    local DEFAULTS = {
       profile = {
@@ -41,6 +42,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          rangeScale = 1,
          rangeX = 0, -- its center, as an offset from the center of the screen (just below the statuses)
          rangeY = -150,
+         rangeCross = false, -- draw a scope cross over it
+         rangeCrossColor = { r = 1, g = 1, b = 1 },
+         rangeCrossScale = 1, -- on top of the indicator's own scale
+         rangeHideIcon = false, -- only allowed while the cross is on, so the indicator never draws nothing
       },
    }
 
@@ -64,6 +69,19 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       db.rangeScale = Clamp(tonumber(db.rangeScale) or DEFAULTS.profile.rangeScale, MIN_RANGE_SCALE, MAX_RANGE_SCALE)
       db.rangeX = tonumber(db.rangeX) or DEFAULTS.profile.rangeX
       db.rangeY = tonumber(db.rangeY) or DEFAULTS.profile.rangeY
+      db.rangeCross = db.rangeCross == true
+      local crossColor = type(db.rangeCrossColor) == "table" and db.rangeCrossColor or {}
+      db.rangeCrossColor = {
+         r = Clamp(tonumber(crossColor.r) or 1, 0, 1),
+         g = Clamp(tonumber(crossColor.g) or 1, 0, 1),
+         b = Clamp(tonumber(crossColor.b) or 1, 0, 1),
+      }
+      db.rangeCrossScale = Clamp(
+         tonumber(db.rangeCrossScale) or DEFAULTS.profile.rangeCrossScale,
+         MIN_RANGE_CROSS_SCALE,
+         MAX_RANGE_CROSS_SCALE
+      )
+      db.rangeHideIcon = db.rangeHideIcon == true and db.rangeCross
    end
 
    ValidateSettings()
@@ -492,6 +510,64 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    rangeTint:SetAllPoints(rangeIcon)
    rangeTint:Hide()
 
+   -- the optional scope cross over the icon: a ring with four hairs that stop short of the center. It's drawn
+   -- with lines, on a child frame that doesn't take the mouse, so dragging & the tooltip still reach rangeFrame.
+   local RANGE_CROSS_THICKNESS = 2
+   local RANGE_CROSS_GAP = 4 -- from the center to where the hairs start
+   local RANGE_CROSS_RING_RADIUS = 15
+   local RANGE_CROSS_RING_SEGMENTS = 32
+
+   -- anchored by its center, so scaling it grows & shrinks it around the middle of the icon
+   local rangeCross = CreateFrame("Frame", nil, rangeFrame)
+   rangeCross:SetSize(RANGE_SIZE, RANGE_SIZE)
+   rangeCross:SetPoint("CENTER")
+   local rangeCrossLines = {}
+
+   -- the points are offsets from the indicator's center
+   local function AddRangeCrossLine(startX, startY, endX, endY)
+      local line = rangeCross:CreateLine(nil, "OVERLAY")
+      line:SetThickness(RANGE_CROSS_THICKNESS)
+      line:SetStartPoint("CENTER", rangeCross, startX, startY)
+      line:SetEndPoint("CENTER", rangeCross, endX, endY)
+      table.insert(rangeCrossLines, line)
+   end
+
+   local rangeEdge = RANGE_SIZE / 2
+   AddRangeCrossLine(0, RANGE_CROSS_GAP, 0, rangeEdge)
+   AddRangeCrossLine(0, -RANGE_CROSS_GAP, 0, -rangeEdge)
+   AddRangeCrossLine(RANGE_CROSS_GAP, 0, rangeEdge, 0)
+   AddRangeCrossLine(-RANGE_CROSS_GAP, 0, -rangeEdge, 0)
+
+   local ringStep = 2 * math.pi / RANGE_CROSS_RING_SEGMENTS
+   for i = 1, RANGE_CROSS_RING_SEGMENTS do
+      local startAngle, endAngle = (i - 1) * ringStep, i * ringStep
+      AddRangeCrossLine(
+         RANGE_CROSS_RING_RADIUS * math.cos(startAngle),
+         RANGE_CROSS_RING_RADIUS * math.sin(startAngle),
+         RANGE_CROSS_RING_RADIUS * math.cos(endAngle),
+         RANGE_CROSS_RING_RADIUS * math.sin(endAngle)
+      )
+   end
+
+   local currentRangeTint -- the entry of RANGE_TINTS being shown, if any
+
+   local function ApplyRangeCross()
+      local color = db.rangeCrossColor
+      local r, g, b = color.r, color.g, color.b
+      -- with no icon to show the range, the cross takes on its color (opaque, as thin lines are hard to see through)
+      if db.rangeHideIcon and currentRangeTint then
+         r, g, b = currentRangeTint[1], currentRangeTint[2], currentRangeTint[3]
+      end
+
+      for _, line in ipairs(rangeCrossLines) do
+         line:SetColorTexture(r, g, b)
+      end
+      rangeCross:SetScale(db.rangeCrossScale)
+      rangeCross:SetShown(db.rangeCross)
+   end
+
+   ApplyRangeCross()
+
    -- the named spell's info, or nil if the game doesn't know a spell by that name
    local function GetRangeSpell()
       if db.rangeSpell == "" then
@@ -518,10 +594,17 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local function SetRangeIcon(texture, desaturated, tint)
       rangeIcon:SetTexture(texture)
       rangeIcon:SetDesaturated(desaturated == true)
+      rangeIcon:SetShown(not db.rangeHideIcon)
       if tint then
          rangeTint:SetColorTexture(unpack(tint))
       end
-      rangeTint:SetShown(tint ~= nil)
+      rangeTint:SetShown(tint ~= nil and not db.rangeHideIcon)
+
+      -- this runs on every range check, so the cross is only recolored when the tint changes
+      if tint ~= currentRangeTint then
+         currentRangeTint = tint
+         ApplyRangeCross()
+      end
    end
 
    local function RefreshRange()
@@ -770,6 +853,83 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                SetRangeScale(value)
             end,
          },
+         cross = {
+            order = 4.1,
+            name = "Scope Cross",
+            desc = "Draw a scope cross targeting symbol over the range indicator. "
+               .. "It can't be turned off while the icon is hidden.",
+            type = "toggle",
+            disabled = function()
+               return db.rangeHideIcon
+            end,
+            get = function()
+               return db.rangeCross
+            end,
+            set = function(_, value)
+               db.rangeCross = value
+               ApplyRangeCross()
+            end,
+         },
+         crossColor = {
+            order = 4.2,
+            name = "Cross Color",
+            desc = "The color of the scope cross. While the icon is hidden, it's only used when there's no range "
+               .. "to show; the cross turns green or red otherwise.",
+            type = "color",
+            disabled = function()
+               return not db.rangeCross
+            end,
+            get = function()
+               local color = db.rangeCrossColor
+               return color.r, color.g, color.b
+            end,
+            set = function(_, r, g, b)
+               local color = db.rangeCrossColor
+               color.r, color.g, color.b = r, g, b
+               ApplyRangeCross()
+            end,
+         },
+         crossScale = {
+            order = 4.3,
+            name = "Cross Scale",
+            desc = "Resize the scope cross. It stays centered on the range indicator.",
+            type = "range",
+            min = MIN_RANGE_CROSS_SCALE,
+            max = MAX_RANGE_CROSS_SCALE,
+            step = 0.05,
+            isPercent = true,
+            width = "full",
+            disabled = function()
+               return not db.rangeCross
+            end,
+            get = function()
+               return db.rangeCrossScale
+            end,
+            set = function(_, value)
+               db.rangeCrossScale = value
+               ApplyRangeCross()
+            end,
+         },
+         hideIcon = {
+            order = 4.4,
+            name = "Hide Icon",
+            desc = "Hide the icon & its tint, leaving only the scope cross, which turns green when your target is "
+               .. "in range and red when it's too far away. The scope cross has to be on to hide the icon. You can "
+               .. "still hold Shift and drag the empty square to move it.",
+            type = "toggle",
+            width = "full",
+            disabled = function()
+               return not db.rangeCross
+            end,
+            get = function()
+               return db.rangeHideIcon
+            end,
+            set = function(_, value)
+               db.rangeHideIcon = value
+               RefreshRange()
+               ApplyRangeCross()
+            end,
+         },
          positionHeader = {
             order = 5,
             name = "Position",
@@ -865,6 +1025,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       ApplyRangeStrata()
       rangeFrame:SetScale(db.rangeScale)
       rangePlacement.Apply()
+      ApplyRangeCross()
       UpdateRangeShown()
       LibStub("AceConfigRegistry-3.0"):NotifyChange(APP_NAME)
    end
