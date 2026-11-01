@@ -235,7 +235,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- frame it sits in keeps the whole stack's size.
    local background = CreateBackdropFrame(nil, frame)
 
-   -- Each status's own frame, used instead of the stack while "Use Separate Frames" is on. The rectangles move
+   -- Each status's own frame, used instead of the stack while "Separate" is on. The rectangles move
    -- between the two, and the stack's `frame` stays around for the events.
    local STATUS_ORDER = { "combat", "flight", "phase" } -- the same order as `rectangles`
    local STATUS_TITLES = { combat = "Combat", flight = "Flight", phase = "Phase" }
@@ -1051,6 +1051,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local HALF_WIDTH_INPUT_WIDGET = "UWU-HalfWidth-EditBox"
    local HALF_WIDTH_SELECT_WIDGET = "UWU-HalfWidth-Dropdown"
    local QUARTER_WIDTH_TOGGLE_WIDGET = "UWU-QuarterWidth-CheckBox"
+   local THIRD_WIDTH_TOGGLE_WIDGET = "UWU-ThirdWidth-CheckBox"
 
    do
       local AceGUI = LibStub("AceGUI-3.0")
@@ -1072,6 +1073,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       RegisterRelativeWidthWidget(HALF_WIDTH_INPUT_WIDGET, "EditBox", 0.5)
       RegisterRelativeWidthWidget(HALF_WIDTH_SELECT_WIDGET, "Dropdown", 0.5)
       RegisterRelativeWidthWidget(QUARTER_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.25)
+      RegisterRelativeWidthWidget(THIRD_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.33) -- 3 exact thirds could round past the row
    end
 
    local rangeOptions = {
@@ -1327,6 +1329,14 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return option
    end
 
+   -- one of the row of three checkboxes that arrange the statuses
+   local function LayoutCheckbox(order, name, desc, key)
+      local option = Checkbox(order, name, desc, key)
+      option.width = nil
+      option.dialogControl = THIRD_WIDTH_TOGGLE_WIDGET
+      return option
+   end
+
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
@@ -1373,51 +1383,29 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                      UpdateRangeShown()
                   end,
                },
-               strata = {
-                  order = 0.1,
-                  name = "Strata",
-                  desc = "Which layer of the screen the statuses are drawn on (the range indicator is drawn one "
-                     .. "layer lower). Higher layers draw in front of lower ones.",
-                  type = "select",
-                  values = STRATA,
-                  sorting = STRATA_ORDER,
-                  get = function()
-                     return db.strata
-                  end,
-                  set = function(_, value)
-                     db.strata = value
-                     ApplyStatusesStrata()
-                     ApplyRangeStrata()
-                  end,
-               },
-               layoutLabel = GroupLabel(0.2, "Layout"),
-               separateFrames = Checkbox(
-                  0.22,
-                  "Use Separate Frames",
+               layoutLabel = GroupLabel(0.05, "Layout"),
+               separateFrames = LayoutCheckbox(
+                  0.06,
+                  "Separate",
                   "Give each status its own frame, which you can hold Shift and drag anywhere (or position on the "
                      .. "Positioning tab), instead of stacking them. They look & behave the same either way.",
                   "separateFrames"
                ),
-               reverse = StackedOnly(Checkbox(
-                  0.25,
+               reverse = StackedOnly(LayoutCheckbox(
+                  0.07,
                   "Reverse",
                   "Reverse the order of the statuses. Normally combat is at the bottom (or the left, if "
                      .. "Horizontal) & phase is at the top (or the right); reversed, it's the other way around.",
                   "reverse"
                )),
-               horizontal = StackedOnly(Checkbox(
-                  0.4,
+               horizontal = StackedOnly(LayoutCheckbox(
+                  0.08,
                   "Horizontal",
                   "Line the statuses up side by side, combat on the left, instead of stacking them. "
                      .. "Works with Reverse.",
                   "horizontal"
                )),
-               hideIcons = Checkbox(
-                  0.5,
-                  "Hide Icons",
-                  "Hide the icons to the left of each status. The statuses get narrower to fit.",
-                  "hideIcons"
-               ),
+               visibilityLabel = GroupLabel(0.09, "Visibility"),
                alwaysShowPhase = Checkbox(
                   1,
                   "Always Show Phase",
@@ -1437,6 +1425,29 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                   "Hide the Past / Present status while you're in combat.",
                   "hidePhaseInCombat"
                ),
+               hideIcons = Checkbox(
+                  4,
+                  "Hide Icons",
+                  "Hide the icons to the left of each status. The statuses get narrower to fit.",
+                  "hideIcons"
+               ),
+               strata = {
+                  order = 5,
+                  name = "Strata",
+                  desc = "Which layer of the screen the statuses are drawn on (the range indicator is drawn one "
+                     .. "layer lower). Higher layers draw in front of lower ones.",
+                  type = "select",
+                  values = STRATA,
+                  sorting = STRATA_ORDER,
+                  get = function()
+                     return db.strata
+                  end,
+                  set = function(_, value)
+                     db.strata = value
+                     ApplyStatusesStrata()
+                     ApplyRangeStrata()
+                  end,
+               },
             },
          },
       },
