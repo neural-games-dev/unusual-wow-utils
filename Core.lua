@@ -74,7 +74,7 @@ end
 --## ==========================================================================
 UWU:RegisterModule("CombatInterfaceManager", {
    title = "Combat Interface Manager",
-   desc = "Hides & restores UI elements (chat, minimap, quest tracker) and can switch your saved camera view when you enter & leave combat.",
+   desc = "Hides & restores UI elements (chat, minimap, quest tracker) and can switch your saved camera view when you enter & leave combat or mount & dismount.",
    slashCommands = { "/cim" },
    commandHelp = { -- listed by /uwu help
       { "/cim", "Open or close the options window" },
@@ -110,7 +110,7 @@ UWU:RegisterModule("CooldownBarGlobal", {
 
 UWU:RegisterModule("ObviousStatuses", {
    title = "Obvious Statuses",
-   desc = "Shows your dragonriding, combat and Zidormi phase (past or present) states as a stack of rectangles.",
+   desc = "Shows your flight, combat and Zidormi phase (past or present) states as a stack of rectangles, plus whether your target is in range of a spell.",
    slashCommands = { "/os" },
    commandHelp = {
       { "/os", "Open or close the options window" },
@@ -406,7 +406,6 @@ local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
    CombatInterfaceManager = true, -- /cim
    Compass = true, -- /compass
-   ObviousStatuses = true, -- /os
    ["Quest Log Counter"] = true, -- /qlc
 }
 

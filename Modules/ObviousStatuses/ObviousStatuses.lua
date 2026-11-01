@@ -22,35 +22,149 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       TOOLTIP = "Tooltip",
    }
 
-   local database = LibStub("AceDB-3.0"):New("ObviousStatusesDB", {
+   local MIN_RANGE_SCALE, MAX_RANGE_SCALE = 0.5, 3
+   local MIN_RANGE_CROSS_SCALE, MAX_RANGE_CROSS_SCALE = 0.5, 3
+
+   -- the game's own sounds that can play when a target comes into range, as keys of SOUNDKIT (which has no "NONE")
+   local RANGE_SOUND_ORDER = {
+      "NONE", "RAID_WARNING", "UI_RAID_BOSS_WHISPER_WARNING", "READY_CHECK", "LFG_ROLE_CHECK", "PVP_THROUGH_QUEUE",
+      "IG_PLAYER_INVITE", "TELL_MESSAGE", "MAP_PING", "ALARM_CLOCK_WARNING_1", "ALARM_CLOCK_WARNING_2",
+      "ALARM_CLOCK_WARNING_3",
+   }
+   local RANGE_SOUNDS = {
+      NONE = "None",
+      RAID_WARNING = "Raid Warning",
+      UI_RAID_BOSS_WHISPER_WARNING = "Boss Whisper",
+      READY_CHECK = "Ready Check",
+      LFG_ROLE_CHECK = "Role Check",
+      PVP_THROUGH_QUEUE = "PvP Queue Ready",
+      IG_PLAYER_INVITE = "Group Invite",
+      TELL_MESSAGE = "Whisper",
+      MAP_PING = "Map Ping",
+      ALARM_CLOCK_WARNING_1 = "Alarm Clock 1",
+      ALARM_CLOCK_WARNING_2 = "Alarm Clock 2",
+      ALARM_CLOCK_WARNING_3 = "Alarm Clock 3",
+   }
+
+   -- Sounds that addons share through LibSharedMedia (saved as "lsm:<name>"), listed after the game's own.
+   local LSM = LibStub("LibSharedMedia-3.0")
+   local LSM_PREFIX = "lsm:"
+   local LSM_NONE = "None" -- LibSharedMedia's own silent entry, which would repeat ours
+
+   local function SharedSoundName(key)
+      return type(key) == "string" and key:sub(1, #LSM_PREFIX) == LSM_PREFIX and key:sub(#LSM_PREFIX + 1) or nil
+   end
+
+   -- nil if it isn't a shared sound, or isn't registered (yet)
+   local function SharedSoundFile(key)
+      local name = SharedSoundName(key)
+      return name and LSM:Fetch("sound", name, true)
+   end
+
+   -- the names of the shared sounds to list, sorted
+   local function SharedSoundNames()
+      local names = {}
+      for _, name in ipairs(LSM:List("sound")) do
+         if name ~= LSM_NONE then
+            table.insert(names, name)
+         end
+      end
+      return names
+   end
+
+   local DEFAULTS = {
       profile = {
          strata = DEFAULT_STRATA,
+         enableCombat = true,
+         enableFlight = true,
+         enablePhase = true,
+         enableRange = true, -- off hides the range indicator & its sound, but keeps its settings
          alwaysShowPhase = false, -- show "Present" in zones that have no Zidormi phase (else hide the rectangle)
          reverse = false, -- stack the statuses top to bottom instead of bottom to top
          horizontal = false, -- line the statuses up side by side instead of stacking them
+         separateFrames = false, -- give each status its own movable frame instead of stacking them
          hideIcons = false,
-         hideDragonInCombat = false,
+         hideFlightInCombat = false,
          hidePhaseInCombat = false,
          -- the stack's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
          y = 0,
+         -- each status's center while they're on separate frames (the default is a stack around the screen's center)
+         combatX = 0,
+         combatY = -76,
+         flightX = 0,
+         flightY = 0,
+         phaseX = 0,
+         phaseY = 76,
+         -- the range indicator (the Range tab)
+         rangeSpell = "", -- the name of the spell whose range is checked (blank hides the indicator)
+         rangeSound = "NONE", -- a key of RANGE_SOUNDS, or "lsm:<name>" for a shared sound
+         rangeScale = 1,
+         rangeX = 0, -- its center, as an offset from the center of the screen (just below the statuses)
+         rangeY = -150,
+         rangeCross = false, -- draw a scope cross over it
+         rangeCrossColor = { r = 1, g = 1, b = 1 },
+         rangeCrossScale = 1, -- on top of the indicator's own scale
+         rangeHideIcon = false, -- only allowed while the cross is on, so the indicator never draws nothing
       },
-   }, true)
+   }
+
+   local database = LibStub("AceDB-3.0"):New("ObviousStatusesDB", DEFAULTS, true)
    local db = database.profile
+
+   -- saved under its old name before "Dragonriding" became "Flight"
+   if database.global.dragonIcon then
+      database.global.flightIcon = database.global.dragonIcon
+      database.global.dragonIcon = nil
+   end
 
    -- fixes up bad saved values
    local function ValidateSettings()
       if not STRATA[db.strata] then
          db.strata = DEFAULT_STRATA
       end
+      db.enableCombat = db.enableCombat ~= false
+      db.enableFlight = db.enableFlight ~= false
+      db.enablePhase = db.enablePhase ~= false
+      db.enableRange = db.enableRange ~= false
       db.alwaysShowPhase = db.alwaysShowPhase == true
       db.reverse = db.reverse == true
       db.horizontal = db.horizontal == true
+      db.separateFrames = db.separateFrames == true
+      for _, key in ipairs({ "combatX", "combatY", "flightX", "flightY", "phaseX", "phaseY" }) do
+         db[key] = tonumber(db[key]) or DEFAULTS.profile[key]
+      end
       db.hideIcons = db.hideIcons == true
-      db.hideDragonInCombat = db.hideDragonInCombat == true
+      -- saved under its old name before "Dragonriding" became "Flight" (each profile moves over once it's used)
+      if db.hideDragonInCombat ~= nil then
+         db.hideFlightInCombat = db.hideDragonInCombat
+         db.hideDragonInCombat = nil
+      end
+      db.hideFlightInCombat = db.hideFlightInCombat == true
       db.hidePhaseInCombat = db.hidePhaseInCombat == true
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
+      db.rangeSpell = type(db.rangeSpell) == "string" and strtrim(db.rangeSpell) or ""
+      -- a shared sound is kept even if its addon hasn't loaded yet (or is gone); it's silent until it's registered
+      if not RANGE_SOUNDS[db.rangeSound] and not SharedSoundName(db.rangeSound) then
+         db.rangeSound = DEFAULTS.profile.rangeSound
+      end
+      db.rangeScale = Clamp(tonumber(db.rangeScale) or DEFAULTS.profile.rangeScale, MIN_RANGE_SCALE, MAX_RANGE_SCALE)
+      db.rangeX = tonumber(db.rangeX) or DEFAULTS.profile.rangeX
+      db.rangeY = tonumber(db.rangeY) or DEFAULTS.profile.rangeY
+      db.rangeCross = db.rangeCross == true
+      local crossColor = type(db.rangeCrossColor) == "table" and db.rangeCrossColor or {}
+      db.rangeCrossColor = {
+         r = Clamp(tonumber(crossColor.r) or 1, 0, 1),
+         g = Clamp(tonumber(crossColor.g) or 1, 0, 1),
+         b = Clamp(tonumber(crossColor.b) or 1, 0, 1),
+      }
+      db.rangeCrossScale = Clamp(
+         tonumber(db.rangeCrossScale) or DEFAULTS.profile.rangeCrossScale,
+         MIN_RANGE_CROSS_SCALE,
+         MAX_RANGE_CROSS_SCALE
+      )
+      db.rangeHideIcon = db.rangeHideIcon == true and db.rangeCross
    end
 
    ValidateSettings()
@@ -75,7 +189,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local PHASE_ZONES = {}
 
    -- The icon for each state of the combat & phase rectangles. `coords` crops the texture, and `color` tints it
-   -- (a white texture takes the color well, so those are desaturated first). The dragonriding rectangle uses the
+   -- (a white texture takes the color well, so those are desaturated first). The flight rectangle uses the
    -- Skyriding aura's own icon instead.
    local ICONS = {
       -- crossed swords, cropped to the swords (the texture has a lot of empty space around them)
@@ -90,7 +204,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       },
    }
    local STEADY_AURA = "Flight Style: Steady"
-   local DRAGON_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark" -- if no icon can be found at all
+   local FLIGHT_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark" -- if no icon can be found at all
 
    -- the background color, by the player's faction (Neutral is a Pandaren who hasn't picked a side yet)
    local FACTION_COLORS = {
@@ -100,21 +214,44 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local NEUTRAL_COLOR = { 0.3, 0.3, 0.3 }
 
    local frame = CreateFrame("Frame", "UWUObviousStatusesFrame", UIParent)
-   frame:SetFrameStrata(db.strata)
 
-   -- the rounded, bordered background behind the rectangles (like the Compass's). It's only as tall as the
-   -- rectangles that are showing; the frame it sits in keeps the whole stack's size.
-   local background = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-   background:SetBackdrop({
-      bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", -- rounded corners
-      tile = true,
-      tileSize = 16,
-      edgeSize = 16,
-      insets = { left = 4, right = 4, top = 4, bottom = 4 },
-   })
-   background:SetBackdropColor(0, 0, 0, 0.5) -- semi-transparent black
-   background:SetBackdropBorderColor(1, 1, 1, 0.8)
+   -- a rounded, bordered background to put rectangles on (like the Compass's)
+   local function CreateBackdropFrame(name, parent)
+      local backdropFrame = CreateFrame("Frame", name, parent, "BackdropTemplate")
+      backdropFrame:SetBackdrop({
+         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", -- rounded corners
+         tile = true,
+         tileSize = 16,
+         edgeSize = 16,
+         insets = { left = 4, right = 4, top = 4, bottom = 4 },
+      })
+      backdropFrame:SetBackdropColor(0, 0, 0, 0.5) -- semi-transparent black
+      backdropFrame:SetBackdropBorderColor(1, 1, 1, 0.8)
+      return backdropFrame
+   end
+
+   -- The background behind the stacked rectangles. It's only as tall as the rectangles that are showing; the
+   -- frame it sits in keeps the whole stack's size.
+   local background = CreateBackdropFrame(nil, frame)
+
+   -- Each status's own frame, used instead of the stack while "Separate" is on. The rectangles move
+   -- between the two, and the stack's `frame` stays around for the events.
+   local STATUS_ORDER = { "combat", "flight", "phase" } -- the same order as `rectangles`
+   local STATUS_TITLES = { combat = "Combat", flight = "Flight", phase = "Phase" }
+   local separateFrames = {}
+   for i, key in ipairs(STATUS_ORDER) do
+      separateFrames[i] = CreateBackdropFrame("UWUObviousStatuses" .. STATUS_TITLES[key] .. "Frame", UIParent)
+   end
+
+   local function ApplyStatusesStrata()
+      frame:SetFrameStrata(db.strata)
+      for _, separateFrame in ipairs(separateFrames) do
+         separateFrame:SetFrameStrata(db.strata)
+      end
+   end
+
+   ApplyStatusesStrata()
 
    local function CreateRectangle(texts)
       local rectangle = CreateFrame("Frame", nil, background)
@@ -142,9 +279,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    -- bottom to top
    local combat = CreateRectangle({ "Fighting", "Roaming" })
-   local dragon = CreateRectangle({ "Dragon", "Steady" })
+   local flight = CreateRectangle({ "Dragon", "Steady" })
    local phase = CreateRectangle({ "Past", "Present" })
-   local rectangles = { combat, dragon, phase }
+   local rectangles = { combat, flight, phase }
 
    -- every rectangle is as wide as the widest text of any of them, so a status changing never changes the size
    local maxTextWidth, textHeight, iconSize = 0, 0, 0
@@ -191,7 +328,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local state = {
       inCombat = InCombatLockdown(),
-      dragon = false,
+      skyriding = false,
       phase = nil, -- "Past", "Present", or nil when this zone has no phase
    }
 
@@ -202,10 +339,32 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
    end
 
+   local function MoveRectangleTo(rectangle, parent)
+      if rectangle:GetParent() ~= parent then
+         rectangle:SetParent(parent)
+         rectangle:SetFrameLevel(parent:GetFrameLevel() + 1)
+      end
+   end
+
    -- The visible rectangles stack up from the bottom (or line up from the left, if horizontal) with no gaps,
    -- combat first, so hiding one shrinks the stack toward that edge. Reversed, it's the mirror image: they hang
    -- from the top (or line up from the right), combat first, and shrink toward that edge instead.
    local function Layout(visible)
+      -- each visible status sits on its own frame, just like a stack of one
+      if db.separateFrames then
+         background:Hide()
+         for i, rectangle in ipairs(rectangles) do
+            local separateFrame = separateFrames[i]
+            MoveRectangleTo(rectangle, separateFrame)
+            rectangle:ClearAllPoints()
+            rectangle:SetPoint("CENTER", separateFrame)
+            rectangle:Show()
+            separateFrame:SetSize(GetBackgroundSize(1))
+            separateFrame:SetShown(visible[i])
+         end
+         return
+      end
+
       local anchor, direction
       if db.horizontal then
          anchor, direction = db.reverse and "RIGHT" or "LEFT", db.reverse and -1 or 1
@@ -218,6 +377,8 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
       local count = 0
       for i, rectangle in ipairs(rectangles) do
+         separateFrames[i]:Hide()
+         MoveRectangleTo(rectangle, background)
          rectangle:SetShown(visible[i])
          if visible[i] then
             local size = db.horizontal and rectangleWidth or rectangleHeight
@@ -232,6 +393,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          end
       end
       background:SetSize(GetBackgroundSize(count))
+      background:SetShown(count > 0) -- with every status disabled, nothing is left to draw or to take the mouse
    end
 
    local function SetIcon(rectangle, icon)
@@ -257,13 +419,13 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       SetIcon(phase, ICONS[phaseText])
 
       -- the Skyriding aura's icon, at full strength whether or not it's on
-      dragon.label:SetText(state.dragon and "Dragon" or "Steady")
-      SetIcon(dragon, { texture = state.dragonIcon or DRAGON_FALLBACK_ICON })
+      flight.label:SetText(state.skyriding and "Dragon" or "Steady")
+      SetIcon(flight, { texture = state.flightIcon or FLIGHT_FALLBACK_ICON })
 
       Layout({
-         true,
-         not (state.inCombat and db.hideDragonInCombat),
-         state.phase ~= nil and not (state.inCombat and db.hidePhaseInCombat),
+         db.enableCombat,
+         db.enableFlight and not (state.inCombat and db.hideFlightInCombat),
+         db.enablePhase and state.phase ~= nil and not (state.inCombat and db.hidePhaseInCombat),
       })
    end
 
@@ -311,22 +473,22 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    -- The Skyriding aura's icon. It's only readable while the aura is on, so it's saved (for all characters) to
    -- show while it's off. Until it has been seen, the spell's icon, then the Steady Flight aura's, stand in.
-   local function GetDragonIcon(aura)
+   local function GetFlightIcon(aura)
       local icon = aura and (aura.icon or (aura.spellId and C_Spell.GetSpellTexture(aura.spellId)))
       if icon then
-         database.global.dragonIcon = icon
+         database.global.flightIcon = icon
          return icon
       end
 
       local steady = C_UnitAuras.GetAuraDataBySpellName("player", STEADY_AURA)
-      return database.global.dragonIcon or C_Spell.GetSpellTexture(SKYRIDING_AURA) or (steady and steady.icon)
+      return database.global.flightIcon or C_Spell.GetSpellTexture(SKYRIDING_AURA) or (steady and steady.icon)
    end
 
    local function UpdateAll()
       state.inCombat = InCombatLockdown()
       local aura = C_UnitAuras.GetAuraDataBySpellName("player", SKYRIDING_AURA)
-      state.dragon = aura ~= nil
-      state.dragonIcon = GetDragonIcon(aura)
+      state.skyriding = aura ~= nil
+      state.flightIcon = GetFlightIcon(aura)
       UpdatePhase()
       Refresh()
    end
@@ -357,66 +519,310 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    UpdateAll()
 
    --## Position ---------------------------------------------------------------
-   -- Saved as the frame's center offset from the screen's center, in screen (UIParent) units.
-   local function ApplyPosition()
-      frame:ClearAllPoints()
-      frame:SetPoint("CENTER", UIParent, "CENTER", db.x, db.y)
+   -- Where a movable frame sits. It's saved as the frame's center offset from the screen's center, in screen
+   -- (UIParent) units whatever its scale is, so the X/Y offsets in the settings always mean the same thing.
+   -- `xKey` & `yKey` name its offsets in the settings, and `scaleKey` its scale (if it has one).
+   local function CreatePlacement(target, xKey, yKey, scaleKey)
+      local placement = {}
+
+      function placement.Get()
+         return db[xKey], db[yKey]
+      end
+
+      function placement.Apply()
+         local scale = scaleKey and db[scaleKey] or 1
+         target:ClearAllPoints()
+         -- anchor offsets are in the frame's own (scaled) units
+         target:SetPoint("CENTER", UIParent, "CENTER", db[xKey] / scale, db[yKey] / scale)
+      end
+
+      function placement.Set(x, y)
+         target:StopMovingOrSizing()
+         db[xKey], db[yKey] = x, y
+         placement.Apply()
+      end
+
+      function placement.Reset()
+         placement.Set(DEFAULTS.profile[xKey], DEFAULTS.profile[yKey])
+      end
+
+      -- Saves the frame's current spot as center offsets (after it's been dragged)
+      local function SaveCenterPosition()
+         local frameX, frameY = target:GetCenter()
+         local screenX, screenY = UIParent:GetCenter()
+         if not (frameX and screenX) then
+            return
+         end
+
+         local frameScale, screenScale = target:GetEffectiveScale(), UIParent:GetEffectiveScale()
+         db[xKey] = math.floor((frameX * frameScale - screenX * screenScale) / screenScale + 0.5)
+         db[yKey] = math.floor((frameY * frameScale - screenY * screenScale) / screenScale + 0.5)
+         placement.Apply() -- back to a single CENTER anchor
+         LibStub("AceConfigRegistry-3.0"):NotifyChange(addonName) -- refresh the offsets in the settings if open
+      end
+
+      -- `region` takes the mouse & moves the frame. Its tooltip is `title`, plus the lines `AddLines` adds.
+      function placement.EnableDragging(region, title, AddLines)
+         target:SetMovable(true) -- before SetUserPlaced, which errors on a frame that isn't movable
+         target:SetUserPlaced(false) -- we save the position ourselves, not the game's layout cache
+         target:SetClampedToScreen(true)
+         region:EnableMouse(true)
+         region:RegisterForDrag("LeftButton")
+         -- locked by default; hold Shift while left-click dragging to move it
+         region:SetScript("OnDragStart", function()
+            if IsShiftKeyDown() then
+               target:StartMoving()
+            end
+         end)
+         region:SetScript("OnDragStop", function()
+            target:StopMovingOrSizing()
+            target:SetUserPlaced(false)
+            SaveCenterPosition()
+         end)
+
+         region:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
+            GameTooltip:SetText(title)
+            if AddLines then
+               AddLines(GameTooltip)
+            end
+            GameTooltip:AddLine("shift+left-mouse to drag", 1, 1, 1)
+            GameTooltip:Show()
+         end)
+         region:SetScript("OnLeave", GameTooltip_Hide)
+      end
+
+      return placement
    end
 
-   -- Saves the frame's current spot as center offsets (after it's been dragged)
-   local function SaveCenterPosition()
-      local frameX, frameY = frame:GetCenter()
-      local screenX, screenY = UIParent:GetCenter()
-      if not (frameX and screenX) then
+   local statusesPlacement = CreatePlacement(frame, "x", "y")
+   statusesPlacement.Apply()
+   -- The background (only as big as the visible statuses) takes the mouse, not the frame (always the whole
+   -- stack's size), so hidden statuses' empty space doesn't block clicks or show the tooltip.
+   statusesPlacement.EnableDragging(background, "Obvious Statuses")
+
+   local separatePlacements = {} -- by status key
+   for i, key in ipairs(STATUS_ORDER) do
+      local placement = CreatePlacement(separateFrames[i], key .. "X", key .. "Y")
+      placement.Apply()
+      placement.EnableDragging(separateFrames[i], "Obvious Statuses: " .. STATUS_TITLES[key])
+      separatePlacements[key] = placement
+   end
+
+   --## ==========================================================================
+   --## RANGE INDICATOR
+   --## ==========================================================================
+   -- A square showing whether your target is in range of the spell named in the Range tab, on its own frame
+   -- (moved & scaled apart from the statuses). It's hidden while no spell is named.
+   local RANGE_SIZE = 48 -- as tall as a status rectangle (at a scale of 1)
+   local RANGE_INTERVAL = 0.1 -- range changes have no event, so it's checked this often (in seconds)
+   local RANGE_ICONS = {
+      inRange = "Interface\\Icons\\Spell_Shadow_MindSteal", -- an open eye: close enough
+      outOfRange = "Interface\\Icons\\Spell_Nature_Sleep", -- a closed eye: too far away
+      unknownSpell = "Interface\\Icons\\INV_Misc_QuestionMark", -- the game's red question mark
+   }
+   -- the slightly dark, semi-transparent colors laid over those icons (red, green, blue, opacity)
+   local RANGE_TINTS = {
+      inRange = { 0, 0.7, 0, 0.5 }, -- green
+      outOfRange = { 0.7, 0, 0, 0.7 }, -- red
+   }
+
+   local rangeFrame = CreateFrame("Frame", "UWUObviousStatusesRangeFrame", UIParent)
+   rangeFrame:SetSize(RANGE_SIZE, RANGE_SIZE)
+   rangeFrame:SetScale(db.rangeScale)
+
+   -- one layer below the statuses' strata (or the same, if theirs is already the lowest)
+   local function ApplyRangeStrata()
+      local index = tIndexOf(STRATA_ORDER, db.strata) or 1
+      rangeFrame:SetFrameStrata(STRATA_ORDER[math.max(index - 1, 1)])
+   end
+
+   ApplyRangeStrata()
+
+   local rangeIcon = rangeFrame:CreateTexture(nil, "ARTWORK")
+   rangeIcon:SetAllPoints()
+
+   -- a semi-transparent color over the icon while the target is in range (green) or too far away (red)
+   local rangeTint = rangeFrame:CreateTexture(nil, "OVERLAY")
+   rangeTint:SetAllPoints(rangeIcon)
+   rangeTint:Hide()
+
+   -- the optional scope cross over the icon: a ring with four hairs that stop short of the center. It's drawn
+   -- with lines, on a child frame that doesn't take the mouse, so dragging & the tooltip still reach rangeFrame.
+   local RANGE_CROSS_THICKNESS = 2
+   local RANGE_CROSS_GAP = 4 -- from the center to where the hairs start
+   local RANGE_CROSS_RING_RADIUS = 15
+   local RANGE_CROSS_RING_SEGMENTS = 32
+
+   -- anchored by its center, so scaling it grows & shrinks it around the middle of the icon
+   local rangeCross = CreateFrame("Frame", nil, rangeFrame)
+   rangeCross:SetSize(RANGE_SIZE, RANGE_SIZE)
+   rangeCross:SetPoint("CENTER")
+   local rangeCrossLines = {}
+
+   -- the points are offsets from the indicator's center
+   local function AddRangeCrossLine(startX, startY, endX, endY)
+      local line = rangeCross:CreateLine(nil, "OVERLAY")
+      line:SetThickness(RANGE_CROSS_THICKNESS)
+      line:SetStartPoint("CENTER", rangeCross, startX, startY)
+      line:SetEndPoint("CENTER", rangeCross, endX, endY)
+      table.insert(rangeCrossLines, line)
+   end
+
+   local rangeEdge = RANGE_SIZE / 2
+   AddRangeCrossLine(0, RANGE_CROSS_GAP, 0, rangeEdge)
+   AddRangeCrossLine(0, -RANGE_CROSS_GAP, 0, -rangeEdge)
+   AddRangeCrossLine(RANGE_CROSS_GAP, 0, rangeEdge, 0)
+   AddRangeCrossLine(-RANGE_CROSS_GAP, 0, -rangeEdge, 0)
+
+   local ringStep = 2 * math.pi / RANGE_CROSS_RING_SEGMENTS
+   for i = 1, RANGE_CROSS_RING_SEGMENTS do
+      local startAngle, endAngle = (i - 1) * ringStep, i * ringStep
+      AddRangeCrossLine(
+         RANGE_CROSS_RING_RADIUS * math.cos(startAngle),
+         RANGE_CROSS_RING_RADIUS * math.sin(startAngle),
+         RANGE_CROSS_RING_RADIUS * math.cos(endAngle),
+         RANGE_CROSS_RING_RADIUS * math.sin(endAngle)
+      )
+   end
+
+   local currentRangeTint -- the entry of RANGE_TINTS being shown, if any
+
+   local function ApplyRangeCross()
+      local color = db.rangeCrossColor
+      local r, g, b = color.r, color.g, color.b
+      -- with no icon to show the range, the cross takes on its color (opaque, as thin lines are hard to see through)
+      if db.rangeHideIcon and currentRangeTint then
+         r, g, b = currentRangeTint[1], currentRangeTint[2], currentRangeTint[3]
+      end
+
+      for _, line in ipairs(rangeCrossLines) do
+         line:SetColorTexture(r, g, b)
+      end
+      rangeCross:SetScale(db.rangeCrossScale)
+      rangeCross:SetShown(db.rangeCross)
+   end
+
+   ApplyRangeCross()
+
+   -- the named spell's info, or nil if the game doesn't know a spell by that name
+   local function GetRangeSpell()
+      if db.rangeSpell == "" then
+         return nil
+      end
+      return C_Spell.GetSpellInfo(db.rangeSpell)
+   end
+
+   -- true or false, or nil when it can't be told: no target, one the spell can't be cast on (e.g. a damage
+   -- spell on a friend), a spell with no range, or a range the game keeps secret from addons
+   local function IsTargetInRange(spellID)
+      if not UnitExists("target") then
+         return nil
+      end
+
+      local inRange = C_Spell.IsSpellInRange(spellID, "target")
+      if issecretvalue and issecretvalue(inRange) then
+         return nil
+      end
+      return inRange
+   end
+
+   -- `tint` is the color to lay over the icon, if any
+   local function SetRangeIcon(texture, desaturated, tint)
+      rangeIcon:SetTexture(texture)
+      rangeIcon:SetDesaturated(desaturated == true)
+      rangeIcon:SetShown(not db.rangeHideIcon)
+      if tint then
+         rangeTint:SetColorTexture(unpack(tint))
+      end
+      rangeTint:SetShown(tint ~= nil and not db.rangeHideIcon)
+
+      -- this runs on every range check, so the cross is only recolored when the tint changes
+      if tint ~= currentRangeTint then
+         currentRangeTint = tint
+         ApplyRangeCross()
+      end
+   end
+
+   -- `soundKey` is a key of RANGE_SOUNDS or a shared sound's, played on the Sound Effects channel
+   local function PlayRangeSound(soundKey)
+      local soundKit = SOUNDKIT[soundKey] -- nil for "None" & shared sounds
+      local sharedFile = SharedSoundFile(soundKey)
+      if soundKit then
+         PlaySound(soundKit, "SFX")
+      elseif sharedFile then
+         PlaySoundFile(sharedFile, "SFX")
+      end
+   end
+
+   local lastInRange -- the last check's result, to tell when the same target comes into range
+
+   local function RefreshRange()
+      local spell = GetRangeSpell()
+      if not spell then
+         lastInRange = nil
+         SetRangeIcon(RANGE_ICONS.unknownSpell)
          return
       end
 
-      local frameScale, screenScale = frame:GetEffectiveScale(), UIParent:GetEffectiveScale()
-      db.x = math.floor((frameX * frameScale - screenX * screenScale) / screenScale + 0.5)
-      db.y = math.floor((frameY * frameScale - screenY * screenScale) / screenScale + 0.5)
-      ApplyPosition() -- back to a single CENTER anchor
-      LibStub("AceConfigRegistry-3.0"):NotifyChange(addonName) -- refresh the Positioning tab if it's open
+      local inRange = IsTargetInRange(spell.spellID)
+      if inRange and lastInRange == false then
+         PlayRangeSound(db.rangeSound)
+      end
+      lastInRange = inRange
+
+      if inRange == nil then
+         SetRangeIcon(spell.iconID, true) -- the spell's own icon, greyed out, until there's something to check
+      elseif inRange then
+         SetRangeIcon(RANGE_ICONS.inRange, false, RANGE_TINTS.inRange)
+      else
+         SetRangeIcon(RANGE_ICONS.outOfRange, false, RANGE_TINTS.outOfRange)
+      end
    end
 
-   frame:SetMovable(true) -- before SetUserPlaced, which errors on a frame that isn't movable
-   frame:SetUserPlaced(false) -- we save the position ourselves, not the game's layout cache
-   ApplyPosition()
-   frame:SetClampedToScreen(true)
-   -- The background (only as big as the visible statuses) takes the mouse, not the frame (always the whole
-   -- stack's size), so hidden statuses' empty space doesn't block clicks or show the tooltip.
-   background:EnableMouse(true)
-   background:RegisterForDrag("LeftButton")
-   -- locked by default; hold Shift while left-click dragging to move it
-   background:SetScript("OnDragStart", function()
-      if IsShiftKeyDown() then
-         frame:StartMoving()
+   local function UpdateRangeShown()
+      rangeFrame:SetShown(db.enableRange and db.rangeSpell ~= "") -- hidden, its checks & sound stop too
+      lastInRange = nil -- a different spell has a different range, so this isn't the target coming into range
+      RefreshRange()
+   end
+
+   -- only runs while the indicator is showing
+   local sinceRangeCheck = 0
+   rangeFrame:SetScript("OnUpdate", function(_, elapsed)
+      sinceRangeCheck = sinceRangeCheck + elapsed
+      if sinceRangeCheck >= RANGE_INTERVAL then
+         sinceRangeCheck = 0
+         RefreshRange()
       end
    end)
-   background:SetScript("OnDragStop", function()
-      frame:StopMovingOrSizing()
-      frame:SetUserPlaced(false)
-      SaveCenterPosition()
+
+   -- a new target shows straight away, instead of on the next check (and is silent if it's already in range)
+   rangeFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+   rangeFrame:SetScript("OnEvent", function()
+      lastInRange = nil
+      RefreshRange()
    end)
 
-   background:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_NONE")
-      GameTooltip:ClearAllPoints()
-      GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT")
-      GameTooltip:SetText("Obvious Statuses")
-      GameTooltip:AddLine("shift+left-mouse to drag", 1, 1, 1)
-      GameTooltip:Show()
+   local rangePlacement = CreatePlacement(rangeFrame, "rangeX", "rangeY", "rangeScale")
+   rangePlacement.Apply()
+   rangePlacement.EnableDragging(rangeFrame, "Range Indicator", function(tooltip)
+      local spell = GetRangeSpell()
+      if spell then
+         tooltip:AddLine("Checking: " .. spell.name, 1, 0.82, 0)
+      else
+         tooltip:AddLine('No spell called "' .. db.rangeSpell .. '" was found', 1, 0.2, 0.2)
+      end
    end)
-   background:SetScript("OnLeave", GameTooltip_Hide)
 
-   local function SetPosition(x, y)
-      frame:StopMovingOrSizing()
-      db.x, db.y = x, y
-      ApplyPosition()
+   local function SetRangeScale(scale)
+      db.rangeScale = Clamp(scale, MIN_RANGE_SCALE, MAX_RANGE_SCALE)
+      rangeFrame:SetScale(db.rangeScale)
+      rangePlacement.Apply() -- keeps the same spot on screen
    end
 
-   local function ResetPosition()
-      SetPosition(0, 0)
-   end
+   UpdateRangeShown()
 
    --## ==========================================================================
    --## SETTINGS WINDOW (/os, the /uwu cog & Options > AddOns)
@@ -424,42 +830,46 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local APP_NAME = "ObviousStatuses"
 
    --## Positioning tab ---------------------------------------------------------
-   local POSITION_NUDGE = 1 -- how far the -/+ buttons move the statuses
+   local POSITION_NUDGE = 1 -- how far the -/+ buttons move a frame
 
-   local function OffsetInput(axis, label, order)
+   -- `what` names the frame in descriptions, e.g. "the statuses"
+   local function OffsetInput(placement, what, axis, label, order)
       return {
          order = order,
          name = label,
-         desc = "Offset of the statuses' center from the center of the screen.",
+         desc = "Offset of the center of " .. what .. " from the center of the screen.",
          type = "input",
          get = function()
-            return tostring(db[axis])
+            local x, y = placement.Get()
+            return tostring(axis == "x" and x or y)
          end,
          validate = function(_, value)
             return tonumber(value) ~= nil or "Please enter a number."
          end,
          set = function(_, value)
+            local x, y = placement.Get()
             if axis == "x" then
-               SetPosition(tonumber(value), db.y)
+               placement.Set(tonumber(value), y)
             else
-               SetPosition(db.x, tonumber(value))
+               placement.Set(x, tonumber(value))
             end
          end,
       }
    end
 
-   local function NudgeButton(axis, direction, order)
+   local function NudgeButton(placement, axis, direction, order)
       return {
          order = order,
          name = direction < 0 and "-" or "+",
          type = "execute",
          width = 0.5,
          func = function()
+            local x, y = placement.Get()
             local delta = direction * POSITION_NUDGE
             if axis == "x" then
-               SetPosition(db.x + delta, db.y)
+               placement.Set(x + delta, y)
             else
-               SetPosition(db.x, db.y + delta)
+               placement.Set(x, y + delta)
             end
          end,
       }
@@ -468,6 +878,46 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- forces the next options onto a new row
    local function LineBreak(order)
       return { order = order, name = "", type = "description", width = "full" }
+   end
+
+   -- Adds the X/Y offsets, nudge, centering & reset options for a placement to `args`, ordered from `order`.
+   -- `what` names the frame in descriptions, and `defaultSpot` where Reset Position puts it.
+   local function AddPositionOptions(args, placement, what, defaultSpot, order)
+      args.xOffset = OffsetInput(placement, what, "x", "X Offset", order)
+      args.yOffset = OffsetInput(placement, what, "y", "Y Offset", order + 1)
+      args.nudgeBreak = LineBreak(order + 9)
+      args.xMinus = NudgeButton(placement, "x", -1, order + 10)
+      args.xPlus = NudgeButton(placement, "x", 1, order + 11)
+      args.yMinus = NudgeButton(placement, "y", -1, order + 12)
+      args.yPlus = NudgeButton(placement, "y", 1, order + 13)
+      args.centerBreak = LineBreak(order + 19)
+      args.centerHorizontally = {
+         order = order + 20,
+         name = "Center Horizontally",
+         type = "execute",
+         func = function()
+            local _, y = placement.Get()
+            placement.Set(0, y)
+         end,
+      }
+      args.centerVertically = {
+         order = order + 21,
+         name = "Center Vertically",
+         type = "execute",
+         func = function()
+            local x = placement.Get()
+            placement.Set(x, 0)
+         end,
+      }
+      args.resetBreak = LineBreak(order + 29)
+      args.resetPosition = {
+         order = order + 30,
+         name = "Reset Position",
+         desc = "Move " .. what .. " back to " .. defaultSpot .. ".",
+         type = "execute",
+         func = placement.Reset,
+      }
+      return args
    end
 
    local function Checkbox(order, name, desc, key)
@@ -487,11 +937,37 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       }
    end
 
+   -- The tab moves the stack, or (while they're on separate frames) whichever status is picked in its dropdown
+   local positionedStatus = STATUS_ORDER[1]
+
+   local function GetPositionedPlacement()
+      return db.separateFrames and separatePlacements[positionedStatus] or statusesPlacement
+   end
+
+   local positionedPlacement = {
+      Get = function()
+         return GetPositionedPlacement().Get()
+      end,
+      Set = function(x, y)
+         GetPositionedPlacement().Set(x, y)
+      end,
+      Reset = function()
+         GetPositionedPlacement().Reset()
+      end,
+   }
+
+   local function HideWithoutSeparateFrames()
+      return not db.separateFrames
+   end
+
+   local statusBreak = LineBreak(3)
+   statusBreak.hidden = HideWithoutSeparateFrames
+
    local positioningOptions = {
       name = "Positioning",
       type = "group",
       order = 2,
-      args = {
+      args = AddPositionOptions({
          intro = {
             order = 1,
             name = "Position the statuses precisely, relative to the center of the screen. "
@@ -499,57 +975,467 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             type = "description",
             width = "full",
          },
-         xOffset = OffsetInput("x", "X Offset", 10),
-         yOffset = OffsetInput("y", "Y Offset", 11),
-         nudgeBreak = LineBreak(19),
-         xMinus = NudgeButton("x", -1, 20),
-         xPlus = NudgeButton("x", 1, 21),
-         yMinus = NudgeButton("y", -1, 22),
-         yPlus = NudgeButton("y", 1, 23),
-         centerBreak = LineBreak(29),
-         centerHorizontally = {
-            order = 30,
-            name = "Center Horizontally",
-            type = "execute",
-            func = function()
-               SetPosition(0, db.y)
+         status = {
+            order = 2,
+            name = "Status",
+            desc = "Which status's frame these options move.",
+            type = "select",
+            values = STATUS_TITLES,
+            sorting = STATUS_ORDER,
+            hidden = HideWithoutSeparateFrames,
+            get = function()
+               return positionedStatus
+            end,
+            set = function(_, value)
+               positionedStatus = value
             end,
          },
-         centerVertically = {
-            order = 31,
-            name = "Center Vertically",
-            type = "execute",
-            func = function()
-               SetPosition(db.x, 0)
-            end,
-         },
-         resetBreak = LineBreak(39),
-         resetPosition = {
-            order = 40,
-            name = "Reset Position",
-            desc = "Move the statuses back to their default spot, the center of the screen.",
-            type = "execute",
-            func = ResetPosition,
-         },
-      },
+         statusBreak = statusBreak,
+      }, positionedPlacement, "the statuses", "their default spot, around the center of the screen", 10),
    }
+
+   --## Range tab ---------------------------------------------------------------
+   -- A regular Ace dropdown row with a speaker button on its right that samples the row's sound, without
+   -- selecting it or closing the list. "None" has nothing to sample, so its row has no button.
+   local SOUND_ITEM_WIDGET = "UWU-Dropdown-Item-Sound"
+
+   do
+      local AceGUI = LibStub("AceGUI-3.0")
+
+      local function SetPullout(widget, pullout)
+         widget.baseSetPullout(widget, pullout)
+         -- the row's value is only known by now, not when the row is created
+         local value = widget.userdata.value
+         widget.speaker:SetShown(SOUNDKIT[value] ~= nil or SharedSoundFile(value) ~= nil)
+      end
+
+      local function Speaker_OnClick(speaker)
+         PlayRangeSound(speaker.row.userdata.value)
+      end
+
+      -- the speaker covers part of its row, so the row stays highlighted while hovering over it
+      local function Speaker_OnEnter(speaker)
+         local rowFrame = speaker.row.frame
+         rowFrame:GetScript("OnEnter")(rowFrame)
+      end
+
+      local function Speaker_OnLeave(speaker)
+         local rowFrame = speaker.row.frame
+         rowFrame:GetScript("OnLeave")(rowFrame)
+      end
+
+      AceGUI:RegisterWidgetType(SOUND_ITEM_WIDGET, function()
+         local widget = AceGUI.WidgetRegistry["Dropdown-Item-Toggle"]()
+         widget.type = SOUND_ITEM_WIDGET -- pooled under our own type when released
+         widget.baseSetPullout = widget.SetPullout
+         widget.SetPullout = SetPullout
+
+         local speaker = CreateFrame("Button", nil, widget.frame)
+         speaker:SetSize(16, 16)
+         speaker:SetPoint("RIGHT", widget.frame, "RIGHT", -4, 0)
+         speaker:SetNormalTexture("Interface\\Common\\VoiceChat-Speaker")
+         speaker:SetHighlightTexture("Interface\\Common\\VoiceChat-On")
+         speaker:SetScript("OnClick", Speaker_OnClick)
+         speaker:SetScript("OnEnter", Speaker_OnEnter)
+         speaker:SetScript("OnLeave", Speaker_OnLeave)
+         speaker.row = widget
+         widget.speaker = speaker
+
+         widget.text:SetPoint("BOTTOMRIGHT", widget.frame, "BOTTOMRIGHT", -24, 0) -- stops short of the speaker
+         return widget
+      end, 1)
+   end
+
+   -- Ace's option widths are fixed, so these controls set their own to take a share of their row, however wide the
+   -- window is resized (or the Options > AddOns page is).
+   local HALF_WIDTH_INPUT_WIDGET = "UWU-HalfWidth-EditBox"
+   local HALF_WIDTH_SELECT_WIDGET = "UWU-HalfWidth-Dropdown"
+   local QUARTER_WIDTH_TOGGLE_WIDGET = "UWU-QuarterWidth-CheckBox"
+   local THIRD_WIDTH_TOGGLE_WIDGET = "UWU-ThirdWidth-CheckBox"
+
+   do
+      local AceGUI = LibStub("AceGUI-3.0")
+
+      local function RegisterRelativeWidthWidget(widgetType, baseType, share)
+         AceGUI:RegisterWidgetType(widgetType, function()
+            local widget = AceGUI.WidgetRegistry[baseType]()
+            widget.type = widgetType -- pooled under our own type when released
+
+            local baseOnAcquire = widget.OnAcquire
+            widget.OnAcquire = function(self)
+               baseOnAcquire(self)
+               self:SetRelativeWidth(share)
+            end
+            return widget
+         end, 1)
+      end
+
+      RegisterRelativeWidthWidget(HALF_WIDTH_INPUT_WIDGET, "EditBox", 0.5)
+      RegisterRelativeWidthWidget(HALF_WIDTH_SELECT_WIDGET, "Dropdown", 0.5)
+      RegisterRelativeWidthWidget(QUARTER_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.25)
+      RegisterRelativeWidthWidget(THIRD_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.33) -- 3 exact thirds could round past the row
+   end
+
+   local rangeOptions = {
+      name = "Range",
+      type = "group",
+      order = 3,
+      args = AddPositionOptions({
+         intro = {
+            order = 1,
+            name = "Shows whether your target is in range of a spell: an open eye under a green tint when it is, "
+               .. "and a closed eye under a red tint when it's too far away. With no target (or one the spell can't be cast on), it shows the "
+               .. "spell's icon, greyed out. A red question mark means no spell by that name was found.\n\n"
+               .. "Hold Shift and drag it with the left mouse button to move it.\n ",
+            type = "description",
+            width = "full",
+         },
+         spell = {
+            order = 2,
+            name = "Spell",
+            desc = "The name of the spell to check your target's range with, e.g. one of your attacks or heals. "
+               .. "Leave it blank to hide the range indicator.",
+            type = "input",
+            dialogControl = HALF_WIDTH_INPUT_WIDGET,
+            get = function()
+               return db.rangeSpell
+            end,
+            set = function(_, value)
+               db.rangeSpell = strtrim(value)
+               UpdateRangeShown()
+            end,
+         },
+         spellStatus = {
+            order = 3,
+            name = function()
+               if db.rangeSpell == "" then
+                  return "No spell set, so the range indicator is hidden."
+               end
+
+               local spell = GetRangeSpell()
+               if not spell then
+                  return '|cFFff3333No spell called "' .. db.rangeSpell .. '" was found.|r'
+               end
+               return "Checking: |T" .. spell.iconID .. ":0|t " .. spell.name
+            end,
+            type = "description",
+            width = "full",
+         },
+         sound = {
+            order = 2.5,
+            name = "Play Sound",
+            desc = "A sound to play when your target comes into range, from the game or shared by your other "
+               .. "addons. It stays silent when you select a target that's already in range.",
+            type = "select",
+            dialogControl = HALF_WIDTH_SELECT_WIDGET,
+            itemControl = SOUND_ITEM_WIDGET,
+            values = function()
+               local labels = CopyTable(RANGE_SOUNDS)
+               for _, name in ipairs(SharedSoundNames()) do
+                  labels[LSM_PREFIX .. name] = name
+               end
+               return labels
+            end,
+            sorting = function()
+               local order = CopyTable(RANGE_SOUND_ORDER)
+               for _, name in ipairs(SharedSoundNames()) do
+                  table.insert(order, LSM_PREFIX .. name)
+               end
+               return order
+            end,
+            get = function()
+               return db.rangeSound
+            end,
+            set = function(_, value)
+               db.rangeSound = value
+               PlayRangeSound(value)
+            end,
+         },
+         scale = {
+            order = 4,
+            name = "Scale",
+            desc = "Resize the range indicator.",
+            type = "range",
+            min = MIN_RANGE_SCALE,
+            max = MAX_RANGE_SCALE,
+            step = 0.05,
+            isPercent = true,
+            width = "full",
+            get = function()
+               return db.rangeScale
+            end,
+            set = function(_, value)
+               SetRangeScale(value)
+            end,
+         },
+         cross = {
+            order = 4.1,
+            name = "Scope Cross",
+            desc = "Draw a scope cross targeting symbol over the range indicator. "
+               .. "It can't be turned off while the icon is hidden.",
+            type = "toggle",
+            disabled = function()
+               return db.rangeHideIcon
+            end,
+            get = function()
+               return db.rangeCross
+            end,
+            set = function(_, value)
+               db.rangeCross = value
+               ApplyRangeCross()
+            end,
+         },
+         crossColor = {
+            order = 4.2,
+            name = "Cross Color",
+            desc = "The color of the scope cross. While the icon is hidden, it's only used when there's no range "
+               .. "to show; the cross turns green or red otherwise.",
+            type = "color",
+            disabled = function()
+               return not db.rangeCross
+            end,
+            get = function()
+               local color = db.rangeCrossColor
+               return color.r, color.g, color.b
+            end,
+            set = function(_, r, g, b)
+               local color = db.rangeCrossColor
+               color.r, color.g, color.b = r, g, b
+               ApplyRangeCross()
+            end,
+         },
+         crossScale = {
+            order = 4.3,
+            name = "Cross Scale",
+            desc = "Resize the scope cross. It stays centered on the range indicator.",
+            type = "range",
+            min = MIN_RANGE_CROSS_SCALE,
+            max = MAX_RANGE_CROSS_SCALE,
+            step = 0.05,
+            isPercent = true,
+            width = "full",
+            disabled = function()
+               return not db.rangeCross
+            end,
+            get = function()
+               return db.rangeCrossScale
+            end,
+            set = function(_, value)
+               db.rangeCrossScale = value
+               ApplyRangeCross()
+            end,
+         },
+         hideIcon = {
+            order = 4.4,
+            name = "Hide Icon",
+            desc = "Hide the icon & its tint, leaving only the scope cross, which turns green when your target is "
+               .. "in range and red when it's too far away. The scope cross has to be on to hide the icon. You can "
+               .. "still hold Shift and drag the empty square to move it.",
+            type = "toggle",
+            width = "full",
+            disabled = function()
+               return not db.rangeCross
+            end,
+            get = function()
+               return db.rangeHideIcon
+            end,
+            set = function(_, value)
+               db.rangeHideIcon = value
+               RefreshRange()
+               ApplyRangeCross()
+            end,
+         },
+         positionHeader = {
+            order = 5,
+            name = "Position",
+            type = "header",
+         },
+      }, rangePlacement, "the range indicator", "its default spot, just below the center of the screen", 10),
+   }
+
+   -- these buttons' tooltips would only repeat their labels (any descStyle but "tooltip" turns Ace's off)
+   for _, key in ipairs({ "xMinus", "xPlus", "yMinus", "yPlus", "centerHorizontally", "centerVertically" }) do
+      rangeOptions.args[key].descStyle = "none"
+   end
+
+   -- a regular Ace button with big, outlined text, so the nudge buttons' "+" & "-" are easy to read
+   local LARGE_TEXT_BUTTON_WIDGET = "UWU-LargeTextButton"
+
+   LibStub("AceGUI-3.0"):RegisterWidgetType(LARGE_TEXT_BUTTON_WIDGET, function()
+      local widget = LibStub("AceGUI-3.0").WidgetRegistry["Button"]()
+      widget.type = LARGE_TEXT_BUTTON_WIDGET -- pooled under our own type when released
+      widget.frame:SetNormalFontObject("GameFontNormalHugeOutline")
+      widget.frame:SetHighlightFontObject("GameFontHighlightHugeOutline")
+      return widget
+   end, 1)
+
+   for _, key in ipairs({ "xMinus", "xPlus", "yMinus", "yPlus" }) do
+      rangeOptions.args[key].dialogControl = LARGE_TEXT_BUTTON_WIDGET
+   end
+
+   -- A label over a group of options, in the same font as the Strata dropdown's, with some space above it. It's
+   -- its own widget since Ace's rows have fixed gaps, and a spacer row would add more than this margin.
+   local GROUP_LABEL_WIDGET = "UWU-GroupLabel"
+   local GROUP_LABEL_TOP_MARGIN = 8
+
+   LibStub("AceGUI-3.0"):RegisterWidgetType(GROUP_LABEL_WIDGET, function()
+      local frame = CreateFrame("Frame", nil, UIParent)
+      frame:Hide()
+
+      local text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      text:SetPoint("TOPLEFT", 0, -GROUP_LABEL_TOP_MARGIN)
+      text:SetPoint("TOPRIGHT", 0, -GROUP_LABEL_TOP_MARGIN)
+      text:SetJustifyH("LEFT")
+      text:SetWordWrap(false)
+
+      return LibStub("AceGUI-3.0"):RegisterAsWidget({
+         type = GROUP_LABEL_WIDGET,
+         frame = frame,
+         OnAcquire = function(self)
+            self:SetWidth(200)
+            self:SetText("")
+         end,
+         SetText = function(self, value)
+            text:SetText(value)
+            self:SetHeight(GROUP_LABEL_TOP_MARGIN + text:GetStringHeight())
+         end,
+         SetFontObject = function() end, -- Ace sets every description's font; this one keeps its own
+      })
+   end, 1)
+
+   local function GroupLabel(order, name)
+      return {
+         order = order,
+         name = name,
+         type = "description",
+         dialogControl = GROUP_LABEL_WIDGET,
+         width = "full",
+      }
+   end
+
+   -- greys out an option that only applies while the statuses are stacked
+   local function StackedOnly(option)
+      option.disabled = function()
+         return db.separateFrames
+      end
+      return option
+   end
+
+   -- one of the row of four checkboxes that turn a feature on or off
+   local function EnableCheckbox(order, name, desc, key)
+      local option = Checkbox(order, name, desc, key)
+      option.width = nil
+      option.dialogControl = QUARTER_WIDTH_TOGGLE_WIDGET
+      return option
+   end
+
+   -- one of the row of three checkboxes that arrange the statuses
+   local function LayoutCheckbox(order, name, desc, key)
+      local option = Checkbox(order, name, desc, key)
+      option.width = nil
+      option.dialogControl = THIRD_WIDTH_TOGGLE_WIDGET
+      return option
+   end
 
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
-      childGroups = "tab", -- General & Positioning as tabs (in /os and in Options > AddOns)
+      childGroups = "tab", -- General, Positioning & Range as tabs (in /os and in Options > AddOns)
       args = {
          positioning = positioningOptions,
+         range = rangeOptions,
          general = {
             name = "General",
             type = "group",
             order = 1,
             args = {
+               enableLabel = GroupLabel(0, "Enable/Disable"),
+               enableCombat = EnableCheckbox(
+                  0.01,
+                  "Combat",
+                  "Show the Fighting / Roaming status.",
+                  "enableCombat"
+               ),
+               enableFlight = EnableCheckbox(
+                  0.02,
+                  "Flight",
+                  "Show the Dragon / Steady status.",
+                  "enableFlight"
+               ),
+               enablePhase = EnableCheckbox(
+                  0.03,
+                  "Phase",
+                  "Show the Past / Present status.",
+                  "enablePhase"
+               ),
+               enableRange = {
+                  order = 0.04,
+                  name = "Range",
+                  desc = "Show the range indicator and play its sound. While this is off, the Range tab can still "
+                     .. "be changed, but its settings have no effect.",
+                  type = "toggle",
+                  dialogControl = QUARTER_WIDTH_TOGGLE_WIDGET,
+                  get = function()
+                     return db.enableRange
+                  end,
+                  set = function(_, value)
+                     db.enableRange = value
+                     UpdateRangeShown()
+                  end,
+               },
+               layoutLabel = GroupLabel(0.05, "Layout"),
+               separateFrames = LayoutCheckbox(
+                  0.06,
+                  "Separate",
+                  "Give each status its own frame, which you can hold Shift and drag anywhere (or position on the "
+                     .. "Positioning tab), instead of stacking them. They look & behave the same either way.",
+                  "separateFrames"
+               ),
+               reverse = StackedOnly(LayoutCheckbox(
+                  0.07,
+                  "Reverse",
+                  "Reverse the order of the statuses. Normally combat is at the bottom (or the left, if "
+                     .. "Horizontal) & phase is at the top (or the right); reversed, it's the other way around.",
+                  "reverse"
+               )),
+               horizontal = StackedOnly(LayoutCheckbox(
+                  0.08,
+                  "Horizontal",
+                  "Line the statuses up side by side, combat on the left, instead of stacking them. "
+                     .. "Works with Reverse.",
+                  "horizontal"
+               )),
+               visibilityLabel = GroupLabel(0.09, "Visibility"),
+               alwaysShowPhase = Checkbox(
+                  1,
+                  "Always Show Phase",
+                  "Show \"Present\" in zones that Zidormi can't send you to the past in. "
+                     .. "When unchecked, the phase status is hidden there.",
+                  "alwaysShowPhase"
+               ),
+               hideFlightInCombat = Checkbox(
+                  2,
+                  "Hide Flight in Combat",
+                  "Hide the Dragon / Steady status while you're in combat.",
+                  "hideFlightInCombat"
+               ),
+               hidePhaseInCombat = Checkbox(
+                  3,
+                  "Hide Phase in Combat",
+                  "Hide the Past / Present status while you're in combat.",
+                  "hidePhaseInCombat"
+               ),
+               hideIcons = Checkbox(
+                  4,
+                  "Hide Icons",
+                  "Hide the icons to the left of each status. The statuses get narrower to fit.",
+                  "hideIcons"
+               ),
                strata = {
-                  order = 0,
+                  order = 5,
                   name = "Strata",
-                  desc = "Which layer of the screen the statuses are drawn on. "
-                     .. "Higher layers draw in front of lower ones.",
+                  desc = "Which layer of the screen the statuses are drawn on (the range indicator is drawn one "
+                     .. "layer lower). Higher layers draw in front of lower ones.",
                   type = "select",
                   values = STRATA,
                   sorting = STRATA_ORDER,
@@ -558,48 +1444,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                   end,
                   set = function(_, value)
                      db.strata = value
-                     frame:SetFrameStrata(value)
+                     ApplyStatusesStrata()
+                     ApplyRangeStrata()
                   end,
                },
-               reverse = Checkbox(
-                  0.25,
-                  "Reverse",
-                  "Reverse the order of the statuses. Normally combat is at the bottom (or the left, if "
-                     .. "Horizontal) & phase is at the top (or the right); reversed, it's the other way around.",
-                  "reverse"
-               ),
-               horizontal = Checkbox(
-                  0.4,
-                  "Horizontal",
-                  "Line the statuses up side by side, combat on the left, instead of stacking them. "
-                     .. "Works with Reverse.",
-                  "horizontal"
-               ),
-               hideIcons = Checkbox(
-                  0.5,
-                  "Hide Icons",
-                  "Hide the icons to the left of each status. The statuses get narrower to fit.",
-                  "hideIcons"
-               ),
-               alwaysShowPhase = Checkbox(
-                  1,
-                  "Always Show Phase",
-                  "Show \"Present\" in zones that Zidormi can't send you to the past in. "
-                     .. "When unchecked, the phase status is hidden there.",
-                  "alwaysShowPhase"
-               ),
-               hideDragonInCombat = Checkbox(
-                  2,
-                  "Hide Dragonriding in Combat",
-                  "Hide the Dragon / Steady status while you're in combat.",
-                  "hideDragonInCombat"
-               ),
-               hidePhaseInCombat = Checkbox(
-                  3,
-                  "Hide Phase in Combat",
-                  "Hide the Past / Present status while you're in combat.",
-                  "hidePhaseInCombat"
-               ),
             },
          },
       },
@@ -613,9 +1461,17 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local function OnProfileChanged()
       db = database.profile
       ValidateSettings()
-      frame:SetFrameStrata(db.strata)
-      ApplyPosition()
+      ApplyStatusesStrata()
+      statusesPlacement.Apply()
+      for _, placement in pairs(separatePlacements) do
+         placement.Apply()
+      end
       UpdateAll()
+      ApplyRangeStrata()
+      rangeFrame:SetScale(db.rangeScale)
+      rangePlacement.Apply()
+      ApplyRangeCross()
+      UpdateRangeShown()
       LibStub("AceConfigRegistry-3.0"):NotifyChange(APP_NAME)
    end
 
@@ -625,7 +1481,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    LibStub("AceConfig-3.0"):RegisterOptionsTable(APP_NAME, options)
    local aceConfigDialog = LibStub("AceConfigDialog-3.0")
-   aceConfigDialog:SetDefaultSize(APP_NAME, 440, 330)
+   aceConfigDialog:SetDefaultSize(APP_NAME, 440, 650) -- tall enough for the Range tab to fit without scrolling
 
    local PREFIX = "|cFF00FF00Obvious Statuses:|r "
 

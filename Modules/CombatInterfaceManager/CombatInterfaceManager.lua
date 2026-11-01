@@ -178,6 +178,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
 
    function CombatInterfaceManager:RegisterCameraViewListener()
       -- recalls the user's saved camera views (the "Set View n" keybindings); a slot that was never saved does nothing
+      local wasMounted = IsMounted()
+
       local function SwitchCameraView(_self, event)
          local cameraView = self.db.profile.cameraView
          if not cameraView then
@@ -189,6 +191,16 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
             view = cameraView.onEnterCombat
          elseif event == "PLAYER_REGEN_ENABLED" then
             view = cameraView.onLeaveCombat
+         elseif event == "PLAYER_MOUNT_DISPLAY_CHANGED" then
+            -- only act on a real change, in case this fires while the mounted state stays the same
+            local isMounted = IsMounted()
+            local changed = isMounted ~= wasMounted
+            wasMounted = isMounted
+
+            -- the combat views win while fighting, so getting knocked off a mount keeps the combat camera
+            if changed and not InCombatLockdown() then
+               view = isMounted and cameraView.onMount or cameraView.onDismount
+            end
          end
 
          if view and view >= 1 and view <= 5 then
@@ -200,6 +212,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       local f = CreateFrame("Frame")
       f:RegisterEvent("PLAYER_REGEN_DISABLED") -- Event for entering combat
       f:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Event for leaving combat
+      f:RegisterEvent("PLAYER_MOUNT_DISPLAY_CHANGED") -- Event for mounting & dismounting
       f:SetScript("OnEvent", SwitchCameraView)
    end
 end)

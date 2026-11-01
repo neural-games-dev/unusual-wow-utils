@@ -26,8 +26,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          "CombatInterfaceManager",
          self:GetBlizzOptionsFrame(cim)
       )
-      -- the smallest an Ace window can be; fits the labels, 4 toggles & 2 dropdowns (resizing is turned off in Core.lua)
-      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 320)
+      -- the smallest an Ace window can be; fits the labels, 4 toggles & 4 dropdowns (resizing is turned off in Core.lua)
+      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 380)
       -- its page under Unusual WoW Utils in Options > AddOns is added by Core.lua (see AddSettingsPages)
    end
 
@@ -121,6 +121,39 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
                order = 202,
                set = function(info, value)
                   cim.utils:SetDbTableItem("cameraView", "onLeaveCombat", value)
+               end,
+               sorting = cameraViewSorting,
+               type = "select",
+               values = cameraViewChoices,
+            },
+            cameraMountIntro = {
+               name = "Switch camera view when riding:",
+               order = 300,
+               type = "description",
+            },
+            cameraViewOnMount = {
+               desc = "The saved camera view to switch to when you mount. Ignored during combat.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.onMount")
+               end,
+               name = "Mounted",
+               order = 301,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "onMount", value)
+               end,
+               sorting = cameraViewSorting,
+               type = "select",
+               values = cameraViewChoices,
+            },
+            cameraViewOnDismount = {
+               desc = "The saved camera view to switch to when you dismount. Ignored during combat.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.onDismount")
+               end,
+               name = "Unmounted",
+               order = 302,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "onDismount", value)
                end,
                sorting = cameraViewSorting,
                type = "select",
