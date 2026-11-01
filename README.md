@@ -51,9 +51,9 @@ Use `/cbg move` to toggle 'Move' mode, which keeps the bar visible so you can dr
 
 ### Obvious Statuses
 
-Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), dragonriding ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). Options: `/os`
+Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), flight ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). Options: `/os`
 
-The dragonriding and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. Hold Shift and left-click drag to move it, or use the Positioning tab.
+Each status, and the range indicator, can be turned on or off with the Enable/Disable checkboxes at the top of the General tab (with the range indicator off, its tab can still be changed, but its settings have no effect). The flight and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. Hold Shift and left-click drag to move it, or use the Positioning tab.
 
 It also has a range indicator: a separate square that shows whether your target is in range of a spell you name on the Range tab. An open eye under a green tint means it's in range, and a closed eye under a red tint means it's too far away. With no target (or one the spell can't be cast on), it shows the spell's icon, greyed out. If no spell by that name is found, it shows the red question mark. It's hidden while no spell is named. The Range tab also has a dropdown of sounds to play when your target comes into range (the game's own, plus any your other addons share through LibSharedMedia; click a row's speaker icon to preview it), sets its scale and position, can draw a scope cross over it in a color and size you pick (with the cross on, the icon can be hidden, leaving only the cross, which then turns green in range and red out of range), and you can hold Shift and left-click drag it on its own.
 

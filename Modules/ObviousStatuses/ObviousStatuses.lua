@@ -75,11 +75,15 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local DEFAULTS = {
       profile = {
          strata = DEFAULT_STRATA,
+         enableCombat = true,
+         enableFlight = true,
+         enablePhase = true,
+         enableRange = true, -- off hides the range indicator & its sound, but keeps its settings
          alwaysShowPhase = false, -- show "Present" in zones that have no Zidormi phase (else hide the rectangle)
          reverse = false, -- stack the statuses top to bottom instead of bottom to top
          horizontal = false, -- line the statuses up side by side instead of stacking them
          hideIcons = false,
-         hideDragonInCombat = false,
+         hideFlightInCombat = false,
          hidePhaseInCombat = false,
          -- the stack's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
@@ -100,16 +104,31 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local database = LibStub("AceDB-3.0"):New("ObviousStatusesDB", DEFAULTS, true)
    local db = database.profile
 
+   -- saved under its old name before "Dragonriding" became "Flight"
+   if database.global.dragonIcon then
+      database.global.flightIcon = database.global.dragonIcon
+      database.global.dragonIcon = nil
+   end
+
    -- fixes up bad saved values
    local function ValidateSettings()
       if not STRATA[db.strata] then
          db.strata = DEFAULT_STRATA
       end
+      db.enableCombat = db.enableCombat ~= false
+      db.enableFlight = db.enableFlight ~= false
+      db.enablePhase = db.enablePhase ~= false
+      db.enableRange = db.enableRange ~= false
       db.alwaysShowPhase = db.alwaysShowPhase == true
       db.reverse = db.reverse == true
       db.horizontal = db.horizontal == true
       db.hideIcons = db.hideIcons == true
-      db.hideDragonInCombat = db.hideDragonInCombat == true
+      -- saved under its old name before "Dragonriding" became "Flight" (each profile moves over once it's used)
+      if db.hideDragonInCombat ~= nil then
+         db.hideFlightInCombat = db.hideDragonInCombat
+         db.hideDragonInCombat = nil
+      end
+      db.hideFlightInCombat = db.hideFlightInCombat == true
       db.hidePhaseInCombat = db.hidePhaseInCombat == true
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
@@ -158,7 +177,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local PHASE_ZONES = {}
 
    -- The icon for each state of the combat & phase rectangles. `coords` crops the texture, and `color` tints it
-   -- (a white texture takes the color well, so those are desaturated first). The dragonriding rectangle uses the
+   -- (a white texture takes the color well, so those are desaturated first). The flight rectangle uses the
    -- Skyriding aura's own icon instead.
    local ICONS = {
       -- crossed swords, cropped to the swords (the texture has a lot of empty space around them)
@@ -173,7 +192,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       },
    }
    local STEADY_AURA = "Flight Style: Steady"
-   local DRAGON_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark" -- if no icon can be found at all
+   local FLIGHT_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark" -- if no icon can be found at all
 
    -- the background color, by the player's faction (Neutral is a Pandaren who hasn't picked a side yet)
    local FACTION_COLORS = {
@@ -225,9 +244,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    -- bottom to top
    local combat = CreateRectangle({ "Fighting", "Roaming" })
-   local dragon = CreateRectangle({ "Dragon", "Steady" })
+   local flight = CreateRectangle({ "Dragon", "Steady" })
    local phase = CreateRectangle({ "Past", "Present" })
-   local rectangles = { combat, dragon, phase }
+   local rectangles = { combat, flight, phase }
 
    -- every rectangle is as wide as the widest text of any of them, so a status changing never changes the size
    local maxTextWidth, textHeight, iconSize = 0, 0, 0
@@ -274,7 +293,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local state = {
       inCombat = InCombatLockdown(),
-      dragon = false,
+      skyriding = false,
       phase = nil, -- "Past", "Present", or nil when this zone has no phase
    }
 
@@ -315,6 +334,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          end
       end
       background:SetSize(GetBackgroundSize(count))
+      background:SetShown(count > 0) -- with every status disabled, nothing is left to draw or to take the mouse
    end
 
    local function SetIcon(rectangle, icon)
@@ -340,13 +360,13 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       SetIcon(phase, ICONS[phaseText])
 
       -- the Skyriding aura's icon, at full strength whether or not it's on
-      dragon.label:SetText(state.dragon and "Dragon" or "Steady")
-      SetIcon(dragon, { texture = state.dragonIcon or DRAGON_FALLBACK_ICON })
+      flight.label:SetText(state.skyriding and "Dragon" or "Steady")
+      SetIcon(flight, { texture = state.flightIcon or FLIGHT_FALLBACK_ICON })
 
       Layout({
-         true,
-         not (state.inCombat and db.hideDragonInCombat),
-         state.phase ~= nil and not (state.inCombat and db.hidePhaseInCombat),
+         db.enableCombat,
+         db.enableFlight and not (state.inCombat and db.hideFlightInCombat),
+         db.enablePhase and state.phase ~= nil and not (state.inCombat and db.hidePhaseInCombat),
       })
    end
 
@@ -394,22 +414,22 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    -- The Skyriding aura's icon. It's only readable while the aura is on, so it's saved (for all characters) to
    -- show while it's off. Until it has been seen, the spell's icon, then the Steady Flight aura's, stand in.
-   local function GetDragonIcon(aura)
+   local function GetFlightIcon(aura)
       local icon = aura and (aura.icon or (aura.spellId and C_Spell.GetSpellTexture(aura.spellId)))
       if icon then
-         database.global.dragonIcon = icon
+         database.global.flightIcon = icon
          return icon
       end
 
       local steady = C_UnitAuras.GetAuraDataBySpellName("player", STEADY_AURA)
-      return database.global.dragonIcon or C_Spell.GetSpellTexture(SKYRIDING_AURA) or (steady and steady.icon)
+      return database.global.flightIcon or C_Spell.GetSpellTexture(SKYRIDING_AURA) or (steady and steady.icon)
    end
 
    local function UpdateAll()
       state.inCombat = InCombatLockdown()
       local aura = C_UnitAuras.GetAuraDataBySpellName("player", SKYRIDING_AURA)
-      state.dragon = aura ~= nil
-      state.dragonIcon = GetDragonIcon(aura)
+      state.skyriding = aura ~= nil
+      state.flightIcon = GetFlightIcon(aura)
       UpdatePhase()
       Refresh()
    end
@@ -696,7 +716,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    end
 
    local function UpdateRangeShown()
-      rangeFrame:SetShown(db.rangeSpell ~= "")
+      rangeFrame:SetShown(db.enableRange and db.rangeSpell ~= "") -- hidden, its checks & sound stop too
       lastInRange = nil -- a different spell has a different range, so this isn't the target coming into range
       RefreshRange()
    end
@@ -917,15 +937,16 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end, 1)
    end
 
-   -- Ace's option widths are fixed, so these controls set their own to take half of their row, however wide the
+   -- Ace's option widths are fixed, so these controls set their own to take a share of their row, however wide the
    -- window is resized (or the Options > AddOns page is).
    local HALF_WIDTH_INPUT_WIDGET = "UWU-HalfWidth-EditBox"
    local HALF_WIDTH_SELECT_WIDGET = "UWU-HalfWidth-Dropdown"
+   local QUARTER_WIDTH_TOGGLE_WIDGET = "UWU-QuarterWidth-CheckBox"
 
    do
       local AceGUI = LibStub("AceGUI-3.0")
 
-      local function RegisterHalfWidthWidget(widgetType, baseType)
+      local function RegisterRelativeWidthWidget(widgetType, baseType, share)
          AceGUI:RegisterWidgetType(widgetType, function()
             local widget = AceGUI.WidgetRegistry[baseType]()
             widget.type = widgetType -- pooled under our own type when released
@@ -933,14 +954,15 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             local baseOnAcquire = widget.OnAcquire
             widget.OnAcquire = function(self)
                baseOnAcquire(self)
-               self:SetRelativeWidth(0.5)
+               self:SetRelativeWidth(share)
             end
             return widget
          end, 1)
       end
 
-      RegisterHalfWidthWidget(HALF_WIDTH_INPUT_WIDGET, "EditBox")
-      RegisterHalfWidthWidget(HALF_WIDTH_SELECT_WIDGET, "Dropdown")
+      RegisterRelativeWidthWidget(HALF_WIDTH_INPUT_WIDGET, "EditBox", 0.5)
+      RegisterRelativeWidthWidget(HALF_WIDTH_SELECT_WIDGET, "Dropdown", 0.5)
+      RegisterRelativeWidthWidget(QUARTER_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.25)
    end
 
    local rangeOptions = {
@@ -1140,6 +1162,54 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       rangeOptions.args[key].dialogControl = LARGE_TEXT_BUTTON_WIDGET
    end
 
+   -- A label over a group of options, in the same font as the Strata dropdown's, with some space above it. It's
+   -- its own widget since Ace's rows have fixed gaps, and a spacer row would add more than this margin.
+   local GROUP_LABEL_WIDGET = "UWU-GroupLabel"
+   local GROUP_LABEL_TOP_MARGIN = 8
+
+   LibStub("AceGUI-3.0"):RegisterWidgetType(GROUP_LABEL_WIDGET, function()
+      local frame = CreateFrame("Frame", nil, UIParent)
+      frame:Hide()
+
+      local text = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      text:SetPoint("TOPLEFT", 0, -GROUP_LABEL_TOP_MARGIN)
+      text:SetPoint("TOPRIGHT", 0, -GROUP_LABEL_TOP_MARGIN)
+      text:SetJustifyH("LEFT")
+      text:SetWordWrap(false)
+
+      return LibStub("AceGUI-3.0"):RegisterAsWidget({
+         type = GROUP_LABEL_WIDGET,
+         frame = frame,
+         OnAcquire = function(self)
+            self:SetWidth(200)
+            self:SetText("")
+         end,
+         SetText = function(self, value)
+            text:SetText(value)
+            self:SetHeight(GROUP_LABEL_TOP_MARGIN + text:GetStringHeight())
+         end,
+         SetFontObject = function() end, -- Ace sets every description's font; this one keeps its own
+      })
+   end, 1)
+
+   local function GroupLabel(order, name)
+      return {
+         order = order,
+         name = name,
+         type = "description",
+         dialogControl = GROUP_LABEL_WIDGET,
+         width = "full",
+      }
+   end
+
+   -- one of the row of four checkboxes that turn a feature on or off
+   local function EnableCheckbox(order, name, desc, key)
+      local option = Checkbox(order, name, desc, key)
+      option.width = nil
+      option.dialogControl = QUARTER_WIDTH_TOGGLE_WIDGET
+      return option
+   end
+
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
@@ -1152,8 +1222,42 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             type = "group",
             order = 1,
             args = {
+               enableLabel = GroupLabel(0, "Enable/Disable"),
+               enableCombat = EnableCheckbox(
+                  0.01,
+                  "Combat",
+                  "Show the Fighting / Roaming status.",
+                  "enableCombat"
+               ),
+               enableFlight = EnableCheckbox(
+                  0.02,
+                  "Flight",
+                  "Show the Dragon / Steady status.",
+                  "enableFlight"
+               ),
+               enablePhase = EnableCheckbox(
+                  0.03,
+                  "Phase",
+                  "Show the Past / Present status.",
+                  "enablePhase"
+               ),
+               enableRange = {
+                  order = 0.04,
+                  name = "Range",
+                  desc = "Show the range indicator and play its sound. While this is off, the Range tab can still "
+                     .. "be changed, but its settings have no effect.",
+                  type = "toggle",
+                  dialogControl = QUARTER_WIDTH_TOGGLE_WIDGET,
+                  get = function()
+                     return db.enableRange
+                  end,
+                  set = function(_, value)
+                     db.enableRange = value
+                     UpdateRangeShown()
+                  end,
+               },
                strata = {
-                  order = 0,
+                  order = 0.1,
                   name = "Strata",
                   desc = "Which layer of the screen the statuses are drawn on (the range indicator is drawn one "
                      .. "layer lower). Higher layers draw in front of lower ones.",
@@ -1169,6 +1273,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                      ApplyRangeStrata()
                   end,
                },
+               layoutLabel = GroupLabel(0.2, "Layout"),
                reverse = Checkbox(
                   0.25,
                   "Reverse",
@@ -1196,11 +1301,11 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                      .. "When unchecked, the phase status is hidden there.",
                   "alwaysShowPhase"
                ),
-               hideDragonInCombat = Checkbox(
+               hideFlightInCombat = Checkbox(
                   2,
-                  "Hide Dragonriding in Combat",
+                  "Hide Flight in Combat",
                   "Hide the Dragon / Steady status while you're in combat.",
-                  "hideDragonInCombat"
+                  "hideFlightInCombat"
                ),
                hidePhaseInCombat = Checkbox(
                   3,
