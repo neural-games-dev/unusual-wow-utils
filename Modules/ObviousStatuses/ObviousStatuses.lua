@@ -82,12 +82,20 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          alwaysShowPhase = false, -- show "Present" in zones that have no Zidormi phase (else hide the rectangle)
          reverse = false, -- stack the statuses top to bottom instead of bottom to top
          horizontal = false, -- line the statuses up side by side instead of stacking them
+         separateFrames = false, -- give each status its own movable frame instead of stacking them
          hideIcons = false,
          hideFlightInCombat = false,
          hidePhaseInCombat = false,
          -- the stack's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
          y = 0,
+         -- each status's center while they're on separate frames (the default is a stack around the screen's center)
+         combatX = 0,
+         combatY = -76,
+         flightX = 0,
+         flightY = 0,
+         phaseX = 0,
+         phaseY = 76,
          -- the range indicator (the Range tab)
          rangeSpell = "", -- the name of the spell whose range is checked (blank hides the indicator)
          rangeSound = "NONE", -- a key of RANGE_SOUNDS, or "lsm:<name>" for a shared sound
@@ -122,6 +130,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       db.alwaysShowPhase = db.alwaysShowPhase == true
       db.reverse = db.reverse == true
       db.horizontal = db.horizontal == true
+      db.separateFrames = db.separateFrames == true
+      for _, key in ipairs({ "combatX", "combatY", "flightX", "flightY", "phaseX", "phaseY" }) do
+         db[key] = tonumber(db[key]) or DEFAULTS.profile[key]
+      end
       db.hideIcons = db.hideIcons == true
       -- saved under its old name before "Dragonriding" became "Flight" (each profile moves over once it's used)
       if db.hideDragonInCombat ~= nil then
@@ -202,21 +214,44 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local NEUTRAL_COLOR = { 0.3, 0.3, 0.3 }
 
    local frame = CreateFrame("Frame", "UWUObviousStatusesFrame", UIParent)
-   frame:SetFrameStrata(db.strata)
 
-   -- the rounded, bordered background behind the rectangles (like the Compass's). It's only as tall as the
-   -- rectangles that are showing; the frame it sits in keeps the whole stack's size.
-   local background = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-   background:SetBackdrop({
-      bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", -- rounded corners
-      tile = true,
-      tileSize = 16,
-      edgeSize = 16,
-      insets = { left = 4, right = 4, top = 4, bottom = 4 },
-   })
-   background:SetBackdropColor(0, 0, 0, 0.5) -- semi-transparent black
-   background:SetBackdropBorderColor(1, 1, 1, 0.8)
+   -- a rounded, bordered background to put rectangles on (like the Compass's)
+   local function CreateBackdropFrame(name, parent)
+      local backdropFrame = CreateFrame("Frame", name, parent, "BackdropTemplate")
+      backdropFrame:SetBackdrop({
+         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", -- rounded corners
+         tile = true,
+         tileSize = 16,
+         edgeSize = 16,
+         insets = { left = 4, right = 4, top = 4, bottom = 4 },
+      })
+      backdropFrame:SetBackdropColor(0, 0, 0, 0.5) -- semi-transparent black
+      backdropFrame:SetBackdropBorderColor(1, 1, 1, 0.8)
+      return backdropFrame
+   end
+
+   -- The background behind the stacked rectangles. It's only as tall as the rectangles that are showing; the
+   -- frame it sits in keeps the whole stack's size.
+   local background = CreateBackdropFrame(nil, frame)
+
+   -- Each status's own frame, used instead of the stack while "Use Separate Frames" is on. The rectangles move
+   -- between the two, and the stack's `frame` stays around for the events.
+   local STATUS_ORDER = { "combat", "flight", "phase" } -- the same order as `rectangles`
+   local STATUS_TITLES = { combat = "Combat", flight = "Flight", phase = "Phase" }
+   local separateFrames = {}
+   for i, key in ipairs(STATUS_ORDER) do
+      separateFrames[i] = CreateBackdropFrame("UWUObviousStatuses" .. STATUS_TITLES[key] .. "Frame", UIParent)
+   end
+
+   local function ApplyStatusesStrata()
+      frame:SetFrameStrata(db.strata)
+      for _, separateFrame in ipairs(separateFrames) do
+         separateFrame:SetFrameStrata(db.strata)
+      end
+   end
+
+   ApplyStatusesStrata()
 
    local function CreateRectangle(texts)
       local rectangle = CreateFrame("Frame", nil, background)
@@ -304,10 +339,32 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
    end
 
+   local function MoveRectangleTo(rectangle, parent)
+      if rectangle:GetParent() ~= parent then
+         rectangle:SetParent(parent)
+         rectangle:SetFrameLevel(parent:GetFrameLevel() + 1)
+      end
+   end
+
    -- The visible rectangles stack up from the bottom (or line up from the left, if horizontal) with no gaps,
    -- combat first, so hiding one shrinks the stack toward that edge. Reversed, it's the mirror image: they hang
    -- from the top (or line up from the right), combat first, and shrink toward that edge instead.
    local function Layout(visible)
+      -- each visible status sits on its own frame, just like a stack of one
+      if db.separateFrames then
+         background:Hide()
+         for i, rectangle in ipairs(rectangles) do
+            local separateFrame = separateFrames[i]
+            MoveRectangleTo(rectangle, separateFrame)
+            rectangle:ClearAllPoints()
+            rectangle:SetPoint("CENTER", separateFrame)
+            rectangle:Show()
+            separateFrame:SetSize(GetBackgroundSize(1))
+            separateFrame:SetShown(visible[i])
+         end
+         return
+      end
+
       local anchor, direction
       if db.horizontal then
          anchor, direction = db.reverse and "RIGHT" or "LEFT", db.reverse and -1 or 1
@@ -320,6 +377,8 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
       local count = 0
       for i, rectangle in ipairs(rectangles) do
+         separateFrames[i]:Hide()
+         MoveRectangleTo(rectangle, background)
          rectangle:SetShown(visible[i])
          if visible[i] then
             local size = db.horizontal and rectangleWidth or rectangleHeight
@@ -543,6 +602,14 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- The background (only as big as the visible statuses) takes the mouse, not the frame (always the whole
    -- stack's size), so hidden statuses' empty space doesn't block clicks or show the tooltip.
    statusesPlacement.EnableDragging(background, "Obvious Statuses")
+
+   local separatePlacements = {} -- by status key
+   for i, key in ipairs(STATUS_ORDER) do
+      local placement = CreatePlacement(separateFrames[i], key .. "X", key .. "Y")
+      placement.Apply()
+      placement.EnableDragging(separateFrames[i], "Obvious Statuses: " .. STATUS_TITLES[key])
+      separatePlacements[key] = placement
+   end
 
    --## ==========================================================================
    --## RANGE INDICATOR
@@ -870,6 +937,32 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       }
    end
 
+   -- The tab moves the stack, or (while they're on separate frames) whichever status is picked in its dropdown
+   local positionedStatus = STATUS_ORDER[1]
+
+   local function GetPositionedPlacement()
+      return db.separateFrames and separatePlacements[positionedStatus] or statusesPlacement
+   end
+
+   local positionedPlacement = {
+      Get = function()
+         return GetPositionedPlacement().Get()
+      end,
+      Set = function(x, y)
+         GetPositionedPlacement().Set(x, y)
+      end,
+      Reset = function()
+         GetPositionedPlacement().Reset()
+      end,
+   }
+
+   local function HideWithoutSeparateFrames()
+      return not db.separateFrames
+   end
+
+   local statusBreak = LineBreak(3)
+   statusBreak.hidden = HideWithoutSeparateFrames
+
    local positioningOptions = {
       name = "Positioning",
       type = "group",
@@ -882,7 +975,23 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             type = "description",
             width = "full",
          },
-      }, statusesPlacement, "the statuses", "their default spot, the center of the screen", 10),
+         status = {
+            order = 2,
+            name = "Status",
+            desc = "Which status's frame these options move.",
+            type = "select",
+            values = STATUS_TITLES,
+            sorting = STATUS_ORDER,
+            hidden = HideWithoutSeparateFrames,
+            get = function()
+               return positionedStatus
+            end,
+            set = function(_, value)
+               positionedStatus = value
+            end,
+         },
+         statusBreak = statusBreak,
+      }, positionedPlacement, "the statuses", "their default spot, around the center of the screen", 10),
    }
 
    --## Range tab ---------------------------------------------------------------
@@ -1202,6 +1311,14 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       }
    end
 
+   -- greys out an option that only applies while the statuses are stacked
+   local function StackedOnly(option)
+      option.disabled = function()
+         return db.separateFrames
+      end
+      return option
+   end
+
    -- one of the row of four checkboxes that turn a feature on or off
    local function EnableCheckbox(order, name, desc, key)
       local option = Checkbox(order, name, desc, key)
@@ -1269,25 +1386,32 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                   end,
                   set = function(_, value)
                      db.strata = value
-                     frame:SetFrameStrata(value)
+                     ApplyStatusesStrata()
                      ApplyRangeStrata()
                   end,
                },
                layoutLabel = GroupLabel(0.2, "Layout"),
-               reverse = Checkbox(
+               separateFrames = Checkbox(
+                  0.22,
+                  "Use Separate Frames",
+                  "Give each status its own frame, which you can hold Shift and drag anywhere (or position on the "
+                     .. "Positioning tab), instead of stacking them. They look & behave the same either way.",
+                  "separateFrames"
+               ),
+               reverse = StackedOnly(Checkbox(
                   0.25,
                   "Reverse",
                   "Reverse the order of the statuses. Normally combat is at the bottom (or the left, if "
                      .. "Horizontal) & phase is at the top (or the right); reversed, it's the other way around.",
                   "reverse"
-               ),
-               horizontal = Checkbox(
+               )),
+               horizontal = StackedOnly(Checkbox(
                   0.4,
                   "Horizontal",
                   "Line the statuses up side by side, combat on the left, instead of stacking them. "
                      .. "Works with Reverse.",
                   "horizontal"
-               ),
+               )),
                hideIcons = Checkbox(
                   0.5,
                   "Hide Icons",
@@ -1326,8 +1450,11 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local function OnProfileChanged()
       db = database.profile
       ValidateSettings()
-      frame:SetFrameStrata(db.strata)
+      ApplyStatusesStrata()
       statusesPlacement.Apply()
+      for _, placement in pairs(separatePlacements) do
+         placement.Apply()
+      end
       UpdateAll()
       ApplyRangeStrata()
       rangeFrame:SetScale(db.rangeScale)
