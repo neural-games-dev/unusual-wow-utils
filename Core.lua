@@ -406,7 +406,6 @@ local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
    CombatInterfaceManager = true, -- /cim
    Compass = true, -- /compass
-   ObviousStatuses = true, -- /os
    ["Quest Log Counter"] = true, -- /qlc
 }
 

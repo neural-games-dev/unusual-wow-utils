@@ -25,6 +25,53 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local MIN_RANGE_SCALE, MAX_RANGE_SCALE = 0.5, 3
    local MIN_RANGE_CROSS_SCALE, MAX_RANGE_CROSS_SCALE = 0.5, 3
 
+   -- the game's own sounds that can play when a target comes into range, as keys of SOUNDKIT (which has no "NONE")
+   local RANGE_SOUND_ORDER = {
+      "NONE", "RAID_WARNING", "UI_RAID_BOSS_WHISPER_WARNING", "READY_CHECK", "LFG_ROLE_CHECK", "PVP_THROUGH_QUEUE",
+      "IG_PLAYER_INVITE", "TELL_MESSAGE", "MAP_PING", "ALARM_CLOCK_WARNING_1", "ALARM_CLOCK_WARNING_2",
+      "ALARM_CLOCK_WARNING_3",
+   }
+   local RANGE_SOUNDS = {
+      NONE = "None",
+      RAID_WARNING = "Raid Warning",
+      UI_RAID_BOSS_WHISPER_WARNING = "Boss Whisper",
+      READY_CHECK = "Ready Check",
+      LFG_ROLE_CHECK = "Role Check",
+      PVP_THROUGH_QUEUE = "PvP Queue Ready",
+      IG_PLAYER_INVITE = "Group Invite",
+      TELL_MESSAGE = "Whisper",
+      MAP_PING = "Map Ping",
+      ALARM_CLOCK_WARNING_1 = "Alarm Clock 1",
+      ALARM_CLOCK_WARNING_2 = "Alarm Clock 2",
+      ALARM_CLOCK_WARNING_3 = "Alarm Clock 3",
+   }
+
+   -- Sounds that addons share through LibSharedMedia (saved as "lsm:<name>"), listed after the game's own.
+   local LSM = LibStub("LibSharedMedia-3.0")
+   local LSM_PREFIX = "lsm:"
+   local LSM_NONE = "None" -- LibSharedMedia's own silent entry, which would repeat ours
+
+   local function SharedSoundName(key)
+      return type(key) == "string" and key:sub(1, #LSM_PREFIX) == LSM_PREFIX and key:sub(#LSM_PREFIX + 1) or nil
+   end
+
+   -- nil if it isn't a shared sound, or isn't registered (yet)
+   local function SharedSoundFile(key)
+      local name = SharedSoundName(key)
+      return name and LSM:Fetch("sound", name, true)
+   end
+
+   -- the names of the shared sounds to list, sorted
+   local function SharedSoundNames()
+      local names = {}
+      for _, name in ipairs(LSM:List("sound")) do
+         if name ~= LSM_NONE then
+            table.insert(names, name)
+         end
+      end
+      return names
+   end
+
    local DEFAULTS = {
       profile = {
          strata = DEFAULT_STRATA,
@@ -39,6 +86,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          y = 0,
          -- the range indicator (the Range tab)
          rangeSpell = "", -- the name of the spell whose range is checked (blank hides the indicator)
+         rangeSound = "NONE", -- a key of RANGE_SOUNDS, or "lsm:<name>" for a shared sound
          rangeScale = 1,
          rangeX = 0, -- its center, as an offset from the center of the screen (just below the statuses)
          rangeY = -150,
@@ -66,6 +114,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
       db.rangeSpell = type(db.rangeSpell) == "string" and strtrim(db.rangeSpell) or ""
+      -- a shared sound is kept even if its addon hasn't loaded yet (or is gone); it's silent until it's registered
+      if not RANGE_SOUNDS[db.rangeSound] and not SharedSoundName(db.rangeSound) then
+         db.rangeSound = DEFAULTS.profile.rangeSound
+      end
       db.rangeScale = Clamp(tonumber(db.rangeScale) or DEFAULTS.profile.rangeScale, MIN_RANGE_SCALE, MAX_RANGE_SCALE)
       db.rangeX = tonumber(db.rangeX) or DEFAULTS.profile.rangeX
       db.rangeY = tonumber(db.rangeY) or DEFAULTS.profile.rangeY
@@ -607,14 +659,33 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
    end
 
+   -- `soundKey` is a key of RANGE_SOUNDS or a shared sound's, played on the Sound Effects channel
+   local function PlayRangeSound(soundKey)
+      local soundKit = SOUNDKIT[soundKey] -- nil for "None" & shared sounds
+      local sharedFile = SharedSoundFile(soundKey)
+      if soundKit then
+         PlaySound(soundKit, "SFX")
+      elseif sharedFile then
+         PlaySoundFile(sharedFile, "SFX")
+      end
+   end
+
+   local lastInRange -- the last check's result, to tell when the same target comes into range
+
    local function RefreshRange()
       local spell = GetRangeSpell()
       if not spell then
+         lastInRange = nil
          SetRangeIcon(RANGE_ICONS.unknownSpell)
          return
       end
 
       local inRange = IsTargetInRange(spell.spellID)
+      if inRange and lastInRange == false then
+         PlayRangeSound(db.rangeSound)
+      end
+      lastInRange = inRange
+
       if inRange == nil then
          SetRangeIcon(spell.iconID, true) -- the spell's own icon, greyed out, until there's something to check
       elseif inRange then
@@ -626,6 +697,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local function UpdateRangeShown()
       rangeFrame:SetShown(db.rangeSpell ~= "")
+      lastInRange = nil -- a different spell has a different range, so this isn't the target coming into range
       RefreshRange()
    end
 
@@ -639,9 +711,12 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
    end)
 
-   -- a new target shows straight away, instead of on the next check
+   -- a new target shows straight away, instead of on the next check (and is silent if it's already in range)
    rangeFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-   rangeFrame:SetScript("OnEvent", RefreshRange)
+   rangeFrame:SetScript("OnEvent", function()
+      lastInRange = nil
+      RefreshRange()
+   end)
 
    local rangePlacement = CreatePlacement(rangeFrame, "rangeX", "rangeY", "rangeScale")
    rangePlacement.Apply()
@@ -791,6 +866,83 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    }
 
    --## Range tab ---------------------------------------------------------------
+   -- A regular Ace dropdown row with a speaker button on its right that samples the row's sound, without
+   -- selecting it or closing the list. "None" has nothing to sample, so its row has no button.
+   local SOUND_ITEM_WIDGET = "UWU-Dropdown-Item-Sound"
+
+   do
+      local AceGUI = LibStub("AceGUI-3.0")
+
+      local function SetPullout(widget, pullout)
+         widget.baseSetPullout(widget, pullout)
+         -- the row's value is only known by now, not when the row is created
+         local value = widget.userdata.value
+         widget.speaker:SetShown(SOUNDKIT[value] ~= nil or SharedSoundFile(value) ~= nil)
+      end
+
+      local function Speaker_OnClick(speaker)
+         PlayRangeSound(speaker.row.userdata.value)
+      end
+
+      -- the speaker covers part of its row, so the row stays highlighted while hovering over it
+      local function Speaker_OnEnter(speaker)
+         local rowFrame = speaker.row.frame
+         rowFrame:GetScript("OnEnter")(rowFrame)
+      end
+
+      local function Speaker_OnLeave(speaker)
+         local rowFrame = speaker.row.frame
+         rowFrame:GetScript("OnLeave")(rowFrame)
+      end
+
+      AceGUI:RegisterWidgetType(SOUND_ITEM_WIDGET, function()
+         local widget = AceGUI.WidgetRegistry["Dropdown-Item-Toggle"]()
+         widget.type = SOUND_ITEM_WIDGET -- pooled under our own type when released
+         widget.baseSetPullout = widget.SetPullout
+         widget.SetPullout = SetPullout
+
+         local speaker = CreateFrame("Button", nil, widget.frame)
+         speaker:SetSize(16, 16)
+         speaker:SetPoint("RIGHT", widget.frame, "RIGHT", -4, 0)
+         speaker:SetNormalTexture("Interface\\Common\\VoiceChat-Speaker")
+         speaker:SetHighlightTexture("Interface\\Common\\VoiceChat-On")
+         speaker:SetScript("OnClick", Speaker_OnClick)
+         speaker:SetScript("OnEnter", Speaker_OnEnter)
+         speaker:SetScript("OnLeave", Speaker_OnLeave)
+         speaker.row = widget
+         widget.speaker = speaker
+
+         widget.text:SetPoint("BOTTOMRIGHT", widget.frame, "BOTTOMRIGHT", -24, 0) -- stops short of the speaker
+         return widget
+      end, 1)
+   end
+
+   -- Ace's option widths are fixed, so these controls set their own to take half of their row, however wide the
+   -- window is resized (or the Options > AddOns page is).
+   local HALF_WIDTH_INPUT_WIDGET = "UWU-HalfWidth-EditBox"
+   local HALF_WIDTH_SELECT_WIDGET = "UWU-HalfWidth-Dropdown"
+
+   do
+      local AceGUI = LibStub("AceGUI-3.0")
+
+      local function RegisterHalfWidthWidget(widgetType, baseType)
+         AceGUI:RegisterWidgetType(widgetType, function()
+            local widget = AceGUI.WidgetRegistry[baseType]()
+            widget.type = widgetType -- pooled under our own type when released
+
+            local baseOnAcquire = widget.OnAcquire
+            widget.OnAcquire = function(self)
+               baseOnAcquire(self)
+               self:SetRelativeWidth(0.5)
+            end
+            return widget
+         end, 1)
+      end
+
+      RegisterHalfWidthWidget(HALF_WIDTH_INPUT_WIDGET, "EditBox")
+      RegisterHalfWidthWidget(HALF_WIDTH_SELECT_WIDGET, "Dropdown")
+   end
+
    local rangeOptions = {
       name = "Range",
       type = "group",
@@ -811,7 +963,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             desc = "The name of the spell to check your target's range with, e.g. one of your attacks or heals. "
                .. "Leave it blank to hide the range indicator.",
             type = "input",
-            width = "full",
+            dialogControl = HALF_WIDTH_INPUT_WIDGET,
             get = function()
                return db.rangeSpell
             end,
@@ -835,6 +987,36 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             end,
             type = "description",
             width = "full",
+         },
+         sound = {
+            order = 2.5,
+            name = "Play Sound",
+            desc = "A sound to play when your target comes into range, from the game or shared by your other "
+               .. "addons. It stays silent when you select a target that's already in range.",
+            type = "select",
+            dialogControl = HALF_WIDTH_SELECT_WIDGET,
+            itemControl = SOUND_ITEM_WIDGET,
+            values = function()
+               local labels = CopyTable(RANGE_SOUNDS)
+               for _, name in ipairs(SharedSoundNames()) do
+                  labels[LSM_PREFIX .. name] = name
+               end
+               return labels
+            end,
+            sorting = function()
+               local order = CopyTable(RANGE_SOUND_ORDER)
+               for _, name in ipairs(SharedSoundNames()) do
+                  table.insert(order, LSM_PREFIX .. name)
+               end
+               return order
+            end,
+            get = function()
+               return db.rangeSound
+            end,
+            set = function(_, value)
+               db.rangeSound = value
+               PlayRangeSound(value)
+            end,
          },
          scale = {
             order = 4,
@@ -938,6 +1120,26 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       }, rangePlacement, "the range indicator", "its default spot, just below the center of the screen", 10),
    }
 
+   -- these buttons' tooltips would only repeat their labels (any descStyle but "tooltip" turns Ace's off)
+   for _, key in ipairs({ "xMinus", "xPlus", "yMinus", "yPlus", "centerHorizontally", "centerVertically" }) do
+      rangeOptions.args[key].descStyle = "none"
+   end
+
+   -- a regular Ace button with big, outlined text, so the nudge buttons' "+" & "-" are easy to read
+   local LARGE_TEXT_BUTTON_WIDGET = "UWU-LargeTextButton"
+
+   LibStub("AceGUI-3.0"):RegisterWidgetType(LARGE_TEXT_BUTTON_WIDGET, function()
+      local widget = LibStub("AceGUI-3.0").WidgetRegistry["Button"]()
+      widget.type = LARGE_TEXT_BUTTON_WIDGET -- pooled under our own type when released
+      widget.frame:SetNormalFontObject("GameFontNormalHugeOutline")
+      widget.frame:SetHighlightFontObject("GameFontHighlightHugeOutline")
+      return widget
+   end, 1)
+
+   for _, key in ipairs({ "xMinus", "xPlus", "yMinus", "yPlus" }) do
+      rangeOptions.args[key].dialogControl = LARGE_TEXT_BUTTON_WIDGET
+   end
+
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
@@ -1036,7 +1238,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    LibStub("AceConfig-3.0"):RegisterOptionsTable(APP_NAME, options)
    local aceConfigDialog = LibStub("AceConfigDialog-3.0")
-   aceConfigDialog:SetDefaultSize(APP_NAME, 440, 330)
+   aceConfigDialog:SetDefaultSize(APP_NAME, 440, 650) -- tall enough for the Range tab to fit without scrolling
 
    local PREFIX = "|cFF00FF00Obvious Statuses:|r "
 
