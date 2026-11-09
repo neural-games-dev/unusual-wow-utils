@@ -402,14 +402,17 @@ function UWU:ShowAvailableModules()
       local mod = self.modules[key]
 
       if mod.status == "loaded" and not mod.shown and self:IsModuleAvailable(key) then
-         mod.shown = true
-
-         if mod.configApp then
+         -- a failed page is reported without stopping the other utils, and is tried again next time
+         local registered = not mod.configApp or xpcall(function()
             LibStub("AceConfigDialog-3.0"):AddToBlizOptions(mod.configApp, mod.title, UWU.SETTINGS_CATEGORY)
-         end
+         end, geterrorhandler())
 
-         if mod.OnAvailable then
-            xpcall(mod.OnAvailable, geterrorhandler())
+         if registered then
+            mod.shown = true
+
+            if mod.OnAvailable then
+               xpcall(mod.OnAvailable, geterrorhandler())
+            end
          end
       end
    end
