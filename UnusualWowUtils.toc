@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120100, 16001
 ## Notes: A collection of utils to improve your WoW playing experience
 ## Title: Unusual WoW Utils
 ## Version: 1.0

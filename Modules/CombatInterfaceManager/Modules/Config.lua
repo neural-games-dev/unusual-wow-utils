@@ -28,7 +28,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       )
       -- the smallest an Ace window can be; fits the labels, 4 toggles & 4 dropdowns (resizing is turned off in Core.lua)
       LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 380)
-      -- its page under Unusual WoW Utils in Options > AddOns is added by Core.lua (see AddSettingsPages)
+      -- its page under Unusual WoW Utils in Options > AddOns is added by Core.lua (see ShowAvailableModules)
    end
 
    -- `cim` that's passed in is a reference to CombatInterfaceManager's `self`

@@ -1,6 +1,7 @@
 <Bindings>
    <!-- display names come from the BINDING_HEADER_/BINDING_NAME_ globals in Core.lua -->
    <!-- every binding goes in the shared "Unusual WoW Utils" category -->
+   <!-- WoW Forever loads Bindings_Camelot.xml instead, so keep the two in sync -->
 
    <!-- Auto Dungeon Queue (the functions only exist while its module is enabled) -->
    <Binding name="AUTODUNGEONQUEUE_QUEUE" category="BINDING_HEADER_UNUSUALWOWUTILS">

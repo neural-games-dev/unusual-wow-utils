@@ -590,7 +590,7 @@ UWU:AddModuleChunk("QuestLogCounter", function()
    -- one dropdown wide; tall enough for the Style tab's 3 rows of dropdowns
    aceConfigDialog:SetDefaultSize(APP_NAME, 280, 280)
    -- its page under Unusual WoW Utils in Options > AddOns (Positioning & Style as tabs)
-   -- is added by Core.lua (see AddSettingsPages)
+   -- is added by Core.lua (see ShowAvailableModules)
 
    SLASH_QUESTLOGCOUNTER1 = "/qlc"
    SlashCmdList["QUESTLOGCOUNTER"] = function(msg)

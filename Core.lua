@@ -11,8 +11,14 @@ UWU.modules = {}
 UWU.moduleOrder = {}
 
 -- Our category in Options > AddOns. Each loaded util with an options window (`configApp`) gets
--- a page under it, added by AddSettingsPages in the same order as the /uwu settings page.
+-- a page under it, added by ShowAvailableModules in the same order as the /uwu settings page.
 UWU.SETTINGS_CATEGORY = "Unusual WoW Utils"
+
+-- WoW Forever runs the retail client & API with its own interface numbers (16000+), so it's told apart by those.
+-- Its WOW_PROJECT_CAMELOT is checked too, in case a later build changes the numbering.
+local INTERFACE_VERSION = select(4, GetBuildInfo())
+UWU.IS_FOREVER = (INTERFACE_VERSION >= 16000 and INTERFACE_VERSION < 20000)
+   or (WOW_PROJECT_CAMELOT ~= nil and WOW_PROJECT_ID == WOW_PROJECT_CAMELOT)
 
 local function Print(msg)
    print("|cFF33ff99Unusual WoW Utils:|r " .. msg)
@@ -31,9 +37,27 @@ function UWU:AddModuleChunk(key, chunk)
    table.insert(self.modules[key].chunks, chunk)
 end
 
--- module keys sorted alphabetically by title (independent of the load order)
+-- A `retailOnly` module needs something WoW Forever doesn't have, so there it never loads & is left out of
+-- every list, as if it didn't exist. Fixed for the session, so it's safe to check before login.
+function UWU:IsModuleSupported(key)
+   return not (self.IS_FOREVER and self.modules[key].retailOnly)
+end
+
+-- A supported module can also have an `isAvailable` function, for things only known once the character has
+-- logged in (e.g. its spells). Hidden while it returns false. Only check this after PLAYER_LOGIN.
+function UWU:IsModuleAvailable(key)
+   local mod = self.modules[key]
+   return self:IsModuleSupported(key) and (not mod.isAvailable or mod.isAvailable())
+end
+
+-- supported module keys sorted alphabetically by title (independent of the load order)
 function UWU:GetSortedModuleKeys()
-   local sortedKeys = CopyTable(self.moduleOrder)
+   local sortedKeys = {}
+   for _, key in ipairs(self.moduleOrder) do
+      if self:IsModuleSupported(key) then
+         table.insert(sortedKeys, key)
+      end
+   end
    table.sort(sortedKeys, function(a, b)
       return self.modules[a].title < self.modules[b].title
    end)
@@ -119,11 +143,18 @@ UWU:RegisterModule("MobileBankingTimer", {
       { "/mbt reset", "Move the timer back to its default spot" },
    },
    configApp = "MobileBankingTimer",
+   -- it's unknown whether WoW Forever has the Mobile Banking guild perk, so there it's only shown to characters
+   -- who know the spell
+   isAvailable = function()
+      return not UWU.IS_FOREVER or IsPlayerSpell(83958)
+   end,
 })
 
 UWU:RegisterModule("ObviousStatuses", {
    title = "Obvious Statuses",
-   desc = "Shows your flight, combat and Zidormi phase (past or present) states as a stack of rectangles, plus whether your target is in range of a spell.",
+   desc = UWU.IS_FOREVER -- WoW Forever has no flying or Zidormi, so only the combat status is shown there
+      and "Shows whether you're in combat, plus whether your target is in range of a spell."
+      or "Shows your flight, combat and Zidormi phase (past or present) states as a stack of rectangles, plus whether your target is in range of a spell.",
    slashCommands = { "/os" },
    commandHelp = {
       { "/os", "Open or close the options window" },
@@ -185,6 +216,7 @@ end
 UWU:RegisterModule("AutoDungeonQueue", {
    title = "Auto Dungeon Queue",
    desc = "Joins the dungeon queue with your last selected roles via a keybind or slash command.",
+   retailOnly = true, -- WoW Forever has no Dungeon Finder queue (its bindings are left out of Bindings_Camelot.xml)
    slashCommands = { "/adq" },
    commandHelp = {
       { "/adq", "Open or close the Dungeon Finder" },
@@ -289,9 +321,15 @@ function UWU:RegisterSettings()
    for i, key in ipairs(self:GetSortedModuleKeys()) do
       local mod = self.modules[key]
 
+      -- only drawn after login, so it's safe to check here
+      local function IsUnavailable()
+         return not self:IsModuleAvailable(key)
+      end
+
       args[key] = {
          type = "toggle",
          name = mod.title,
+         hidden = IsUnavailable,
          desc = function()
             local text = mod.desc .. "\n\nCurrent session: " .. STATUS_TEXT[mod.status]
 
@@ -334,7 +372,9 @@ function UWU:RegisterSettings()
             -- an AceConfig options window only exists once its module has loaded
             return mod.configApp and mod.status ~= "loaded"
          end,
-         hidden = not (mod.configApp or mod.openConfig),
+         hidden = function()
+            return not (mod.configApp or mod.openConfig) or IsUnavailable()
+         end,
          width = 0.2,
          order = 10 + i * 2 + 1,
       }
@@ -350,16 +390,27 @@ function UWU:RegisterSettings()
    LibStub("AceConfigDialog-3.0"):AddToBlizOptions(addonName, UWU.SETTINGS_CATEGORY)
 end
 
--- One page per loaded util with an options window, under our category in Options > AddOns.
--- They're added here, in the /uwu page's order, since the game lists them in the order they're
+-- Once a loaded util is available (see IsModuleAvailable), this adds its page under our category
+-- in Options > AddOns, if it has an options window, and runs its `OnAvailable` (set by the util).
+-- The pages are added in the /uwu page's order, since the game lists them in the order they're
 -- added. A util may register its options table later (e.g. in its Ace OnInitialize); Ace only
--- needs it once the page is shown.
-function UWU:AddSettingsPages()
+-- needs it once the page is shown. Runs at login & whenever spells change, so a util that only
+-- becomes available later (e.g. a perk being learned) shows up then, at the end of the list.
+-- A page can't be removed again, so one that stops being available keeps its page until a reload.
+function UWU:ShowAvailableModules()
    for _, key in ipairs(self:GetSortedModuleKeys()) do
       local mod = self.modules[key]
 
-      if mod.configApp and mod.status == "loaded" then
-         LibStub("AceConfigDialog-3.0"):AddToBlizOptions(mod.configApp, mod.title, UWU.SETTINGS_CATEGORY)
+      if mod.status == "loaded" and not mod.shown and self:IsModuleAvailable(key) then
+         mod.shown = true
+
+         if mod.configApp then
+            LibStub("AceConfigDialog-3.0"):AddToBlizOptions(mod.configApp, mod.title, UWU.SETTINGS_CATEGORY)
+         end
+
+         if mod.OnAvailable then
+            xpcall(mod.OnAvailable, geterrorhandler())
+         end
       end
    end
 end
@@ -380,14 +431,16 @@ function UWU:PrintHelp()
       local mod = self.modules[key]
       local status = mod.status == "loaded" and "" or " (" .. STATUS_TEXT[mod.status] .. ")"
 
-      print(UTIL_TITLE_COLOR .. mod.title .. "|r" .. status)
+      if self:IsModuleAvailable(key) then
+         print(UTIL_TITLE_COLOR .. mod.title .. "|r" .. status)
 
-      if mod.commandHelp then
-         for _, entry in ipairs(mod.commandHelp) do
-            PrintCommand(entry[1], entry[2])
+         if mod.commandHelp then
+            for _, entry in ipairs(mod.commandHelp) do
+               PrintCommand(entry[1], entry[2])
+            end
+         else
+            print("  |cFFb0b0b0No slash commands (keybinds only)|r")
          end
-      else
-         print("  |cFFb0b0b0No slash commands (keybinds only)|r")
       end
    end
 end
@@ -435,12 +488,24 @@ end)
 --## ==========================================================================
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
-loader:SetScript("OnEvent", function(self, _, loadedAddonName)
+loader:SetScript("OnEvent", function(self, event, loadedAddonName)
+   -- the character's spells are known from login on, so each util's availability can be checked
+   if event == "PLAYER_LOGIN" then
+      self:UnregisterEvent("PLAYER_LOGIN")
+      self:RegisterEvent("SPELLS_CHANGED")
+      UWU:ShowAvailableModules()
+      return
+   elseif event == "SPELLS_CHANGED" then
+      UWU:ShowAvailableModules()
+      return
+   end
+
    if loadedAddonName ~= addonName then
       return
    end
 
    self:UnregisterEvent("ADDON_LOADED")
+   self:RegisterEvent("PLAYER_LOGIN")
 
    UnusualWowUtilsDB = UnusualWowUtilsDB or {}
    UnusualWowUtilsDB.modules = UnusualWowUtilsDB.modules or {}
@@ -452,8 +517,9 @@ loader:SetScript("OnEvent", function(self, _, loadedAddonName)
    UWU:RegisterSettings() -- its module statuses are only read when the window is drawn
 
    for _, key in ipairs(UWU.moduleOrder) do
-      UWU:LoadModule(key)
+      if UWU:IsModuleSupported(key) then
+         UWU:LoadModule(key)
+      end
    end
-
-   UWU:AddSettingsPages() -- once the modules have loaded, so only the running ones get a page
+   -- the running utils get their settings pages at login (ShowAvailableModules)
 end)

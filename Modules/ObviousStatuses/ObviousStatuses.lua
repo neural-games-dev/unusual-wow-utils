@@ -179,6 +179,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local ICON_GROWTH = 4 -- how much taller the icons are than the text
    local BACKGROUND_PADDING = 10 -- between the rectangles and the edge of the background behind them
    local SKYRIDING_AURA = "Flight Style: Skyriding"
+   -- WoW Forever has no flying & no Zidormi, so only the combat status is shown there (and the options for the
+   -- other two are hidden)
+   local FLIGHT_AND_PHASE_SUPPORTED = not UWU.IS_FOREVER
 
    -- Zones where Zidormi can send you to the past, keyed by uiMapID. Zidormi has no API, so a zone is "in the
    -- past" when either of these is true (set whichever one the zone allows):
@@ -253,6 +256,11 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    ApplyStatusesStrata()
 
+   -- with only the combat status (WoW Forever), there's nothing to put on separate frames
+   local function IsSeparate()
+      return FLIGHT_AND_PHASE_SUPPORTED and db.separateFrames
+   end
+
    local function CreateRectangle(texts)
       local rectangle = CreateFrame("Frame", nil, background)
       rectangle.background = rectangle:CreateTexture(nil, "BACKGROUND")
@@ -323,7 +331,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          rectangle.label:SetPoint("LEFT", textLeft, 0)
       end
 
-      frame:SetSize(GetBackgroundSize(#rectangles))
+      frame:SetSize(GetBackgroundSize(FLIGHT_AND_PHASE_SUPPORTED and #rectangles or 1))
    end
 
    local state = {
@@ -351,7 +359,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- from the top (or line up from the right), combat first, and shrink toward that edge instead.
    local function Layout(visible)
       -- each visible status sits on its own frame, just like a stack of one
-      if db.separateFrames then
+      if IsSeparate() then
          background:Hide()
          for i, rectangle in ipairs(rectangles) do
             local separateFrame = separateFrames[i]
@@ -424,8 +432,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
       Layout({
          db.enableCombat,
-         db.enableFlight and not (state.inCombat and db.hideFlightInCombat),
-         db.enablePhase and state.phase ~= nil and not (state.inCombat and db.hidePhaseInCombat),
+         FLIGHT_AND_PHASE_SUPPORTED and db.enableFlight and not (state.inCombat and db.hideFlightInCombat),
+         FLIGHT_AND_PHASE_SUPPORTED and db.enablePhase and state.phase ~= nil
+            and not (state.inCombat and db.hidePhaseInCombat),
       })
    end
 
@@ -486,10 +495,12 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local function UpdateAll()
       state.inCombat = InCombatLockdown()
-      local aura = C_UnitAuras.GetAuraDataBySpellName("player", SKYRIDING_AURA)
-      state.skyriding = aura ~= nil
-      state.flightIcon = GetFlightIcon(aura)
-      UpdatePhase()
+      if FLIGHT_AND_PHASE_SUPPORTED then
+         local aura = C_UnitAuras.GetAuraDataBySpellName("player", SKYRIDING_AURA)
+         state.skyriding = aura ~= nil
+         state.flightIcon = GetFlightIcon(aura)
+         UpdatePhase()
+      end
       Refresh()
    end
 
@@ -499,7 +510,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    frame:RegisterEvent("ZONE_CHANGED_INDOORS")
    frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- entering combat
    frame:RegisterEvent("PLAYER_REGEN_ENABLED") -- leaving combat
-   frame:RegisterUnitEvent("UNIT_AURA", "player")
+   if FLIGHT_AND_PHASE_SUPPORTED then
+      frame:RegisterUnitEvent("UNIT_AURA", "player") -- the Skyriding & Zidormi auras
+   end
    frame:SetScript("OnEvent", function(_, event)
       if event == "PLAYER_REGEN_DISABLED" then
          state.inCombat = true
@@ -941,7 +954,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local positionedStatus = STATUS_ORDER[1]
 
    local function GetPositionedPlacement()
-      return db.separateFrames and separatePlacements[positionedStatus] or statusesPlacement
+      return IsSeparate() and separatePlacements[positionedStatus] or statusesPlacement
    end
 
    local positionedPlacement = {
@@ -957,7 +970,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    }
 
    local function HideWithoutSeparateFrames()
-      return not db.separateFrames
+      return not IsSeparate()
    end
 
    local statusBreak = LineBreak(3)
@@ -1321,6 +1334,13 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return option
    end
 
+   -- hides an option for the flight or phase status, or for arranging several statuses, where only the combat
+   -- status exists (WoW Forever)
+   local function FlightAndPhaseOnly(option)
+      option.hidden = not FLIGHT_AND_PHASE_SUPPORTED
+      return option
+   end
+
    -- one of the row of four checkboxes that turn a feature on or off
    local function EnableCheckbox(order, name, desc, key)
       local option = Checkbox(order, name, desc, key)
@@ -1356,18 +1376,18 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                   "Show the Fighting / Roaming status.",
                   "enableCombat"
                ),
-               enableFlight = EnableCheckbox(
+               enableFlight = FlightAndPhaseOnly(EnableCheckbox(
                   0.02,
                   "Flight",
                   "Show the Dragon / Steady status.",
                   "enableFlight"
-               ),
-               enablePhase = EnableCheckbox(
+               )),
+               enablePhase = FlightAndPhaseOnly(EnableCheckbox(
                   0.03,
                   "Phase",
                   "Show the Past / Present status.",
                   "enablePhase"
-               ),
+               )),
                enableRange = {
                   order = 0.04,
                   name = "Range",
@@ -1383,48 +1403,48 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                      UpdateRangeShown()
                   end,
                },
-               layoutLabel = GroupLabel(0.05, "Layout"),
-               separateFrames = LayoutCheckbox(
+               layoutLabel = FlightAndPhaseOnly(GroupLabel(0.05, "Layout")),
+               separateFrames = FlightAndPhaseOnly(LayoutCheckbox(
                   0.06,
                   "Separate",
                   "Give each status its own frame, which you can hold Shift and drag anywhere (or position on the "
                      .. "Positioning tab), instead of stacking them. They look & behave the same either way.",
                   "separateFrames"
-               ),
-               reverse = StackedOnly(LayoutCheckbox(
+               )),
+               reverse = FlightAndPhaseOnly(StackedOnly(LayoutCheckbox(
                   0.07,
                   "Reverse",
                   "Reverse the order of the statuses. Normally combat is at the bottom (or the left, if "
                      .. "Horizontal) & phase is at the top (or the right); reversed, it's the other way around.",
                   "reverse"
-               )),
-               horizontal = StackedOnly(LayoutCheckbox(
+               ))),
+               horizontal = FlightAndPhaseOnly(StackedOnly(LayoutCheckbox(
                   0.08,
                   "Horizontal",
                   "Line the statuses up side by side, combat on the left, instead of stacking them. "
                      .. "Works with Reverse.",
                   "horizontal"
-               )),
+               ))),
                visibilityLabel = GroupLabel(0.09, "Visibility"),
-               alwaysShowPhase = Checkbox(
+               alwaysShowPhase = FlightAndPhaseOnly(Checkbox(
                   1,
                   "Always Show Phase",
                   "Show \"Present\" in zones that Zidormi can't send you to the past in. "
                      .. "When unchecked, the phase status is hidden there.",
                   "alwaysShowPhase"
-               ),
-               hideFlightInCombat = Checkbox(
+               )),
+               hideFlightInCombat = FlightAndPhaseOnly(Checkbox(
                   2,
                   "Hide Flight in Combat",
                   "Hide the Dragon / Steady status while you're in combat.",
                   "hideFlightInCombat"
-               ),
-               hidePhaseInCombat = Checkbox(
+               )),
+               hidePhaseInCombat = FlightAndPhaseOnly(Checkbox(
                   3,
                   "Hide Phase in Combat",
                   "Hide the Past / Present status while you're in combat.",
                   "hidePhaseInCombat"
-               ),
+               )),
                hideIcons = Checkbox(
                   4,
                   "Hide Icons",
