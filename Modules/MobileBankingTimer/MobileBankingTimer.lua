@@ -190,6 +190,11 @@ UWU:AddModuleChunk("MobileBankingTimer", function()
 
       local frameX, frameY = self:GetCenter()
       local screenX, screenY = UIParent:GetCenter()
+      -- no center to measure from (e.g. the frame lost its points), so put it back where it was
+      if not (frameX and frameY and screenX and screenY) then
+         ApplyPosition()
+         return
+      end
       SetPosition(math.floor(frameX - screenX + 0.5), math.floor(frameY - screenY + 0.5))
    end)
 
