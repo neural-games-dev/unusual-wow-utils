@@ -108,6 +108,19 @@ UWU:RegisterModule("CooldownBarGlobal", {
    configApp = "Cooldown Bar Global",
 })
 
+UWU:RegisterModule("MobileBankingTimer", {
+   title = "Mobile Banking Timer",
+   desc = "A countdown of how long your Mobile Banking guild chest has left, shown from when the cast finishes.",
+   slashCommands = { "/mbt" },
+   commandHelp = {
+      { "/mbt", "Open or close the options window" },
+      { "/mbt move", "Toggle the preview (keeps the timer visible so you can drag it)" },
+      { "/mbt test", "Run the timer for 10 seconds" },
+      { "/mbt reset", "Move the timer back to its default spot" },
+   },
+   configApp = "MobileBankingTimer",
+})
+
 UWU:RegisterModule("ObviousStatuses", {
    title = "Obvious Statuses",
    desc = "Shows your flight, combat and Zidormi phase (past or present) states as a stack of rectangles, plus whether your target is in range of a spell.",
@@ -406,6 +419,7 @@ local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
    CombatInterfaceManager = true, -- /cim
    Compass = true, -- /compass
+   MobileBankingTimer = true, -- /mbt
    ["Quest Log Counter"] = true, -- /qlc
 }
 

@@ -49,6 +49,12 @@ Use `/cbg move` to toggle 'Move' mode, which keeps the bar visible so you can dr
 >
 > If you have a link to the original (e.g. an old GitHub or CurseForge page), please post a message & share it, and I'll properly link to it here.
 
+### Mobile Banking Timer
+
+A countdown of how long your Mobile Banking guild chest has left. It appears as soon as the cast finishes, counts down the chest's 5 minutes, and hides the moment time runs out. A `/reload` or relog doesn't lose it. It's styled like SexyMap's clock, coords and zone text, and the options can change its font, size, outline and colors. Options: `/mbt`
+
+Use `/mbt move` to keep it visible, then hold Shift and left-click drag it into place (`/mbt reset` puts it back). Mobile Banking has a 1 hour cooldown, so `/mbt test` runs the timer for 10 seconds to try it out.
+
 ### Obvious Statuses
 
 Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), flight ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). Options: `/os`
