@@ -495,10 +495,12 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       end
 
       -- its page under Unusual WoW Utils in Options > AddOns (General, Positioning & Profiles as tabs)
-      -- is added by Core.lua (see AddSettingsPages)
+      -- is added by Core.lua (see ShowAvailableModules)
 
       -- Add the event
       CooldownBarGlobal:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
+      -- a newly learned spell may be a better stand-in for the GCD (see FindGcdSpell)
+      CooldownBarGlobal:RegisterEvent("SPELLS_CHANGED")
    end
 
    function CooldownBarGlobal:SetupFrame()
@@ -601,13 +603,146 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
       -- start empty, so nothing draws at the textures' natural size before the first update
       SetBarLength(gcdBarFrame.lagBarTexture, 0)
       SetBarLength(gcdBarFrame.barTexture, 0)
+
+      -- The bar used instead of `barTexture` where the GCD is read from a stand-in spell (WoW Forever), since
+      -- the game fills it from the cooldown's duration object without the cooldown being readable
+      local timerBar = CreateFrame("StatusBar", nil, gcdBarFrame)
+      timerBar:SetAllPoints(gcdBarFrame)
+      timerBar:SetStatusBarTexture(media:Fetch('statusbar', profileDB.bartexture))
+      timerBar:SetStatusBarColor(GetBarColor())
+      timerBar:SetOrientation(CooldownBarGlobal:IsHorizontal() and "HORIZONTAL" or "VERTICAL")
+      timerBar:SetReverseFill(barType == "HRL" or barType == "VTB") -- fills from the right or the top
+      timerBar:SetMinMaxValues(0, 1)
+      timerBar:SetValue(0)
+      timerBar:Hide()
+      gcdBarFrame.timerBar = timerBar
+
+      -- its spark rides the fill's leading edge, which moves without its position being readable
+      local timerSpark = timerBar:CreateTexture(nil, "OVERLAY")
+      timerSpark:SetTexture("Interface\\CastingBar\\UI-CastingBar-Spark")
+      timerSpark:SetBlendMode("ADD")
+      local LEADING_EDGES = { HLR = "RIGHT", HRL = "LEFT", VBT = "TOP", VTB = "BOTTOM" }
+      timerSpark:SetPoint("CENTER", timerBar:GetStatusBarTexture(), LEADING_EDGES[barType] or "RIGHT")
+      if not CooldownBarGlobal:IsHorizontal() then
+         timerSpark:SetRotation(90)
+      end
+      gcdBarFrame.timerSpark = timerSpark
+   end
+
+   -- 61304 is the 'Global Cooldown' spell. WoW Forever doesn't have it, so there the GCD is read from a spell
+   -- the character knows that has no cooldown of its own: it's only ever on cooldown during the GCD.
+   local GCD_SPELL_ID = 61304
+   local gcdSpellID -- the spell whose cooldown is read, found on the first update (nil if there's none yet)
+
+   -- true for a spell that's on the GCD & has no cooldown of its own (e.g. Shadow Bolt: 0 & 1500)
+   local function IsGcdStandIn(spellID)
+      local cooldownMS, gcdMS = GetSpellBaseCooldown(spellID)
+      if issecretvalue and (issecretvalue(cooldownMS) or issecretvalue(gcdMS)) then
+         return false
+      end
+      return cooldownMS == 0 and gcdMS ~= nil and gcdMS > 0
+   end
+
+   -- any such spell in the spellbook works, whatever the class, level or language
+   local function FindGcdStandIn()
+      local bank = Enum.SpellBookSpellBank.Player
+
+      for line = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+         local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(line)
+         local first = lineInfo.itemIndexOffset + 1
+
+         for index = first, first + lineInfo.numSpellBookItems - 1 do
+            local item = C_SpellBook.GetSpellBookItemInfo(index, bank)
+            if item and item.itemType == Enum.SpellBookItemType.Spell and item.spellID
+               and not item.isPassive and not item.isOffSpec
+               and IsPlayerSpell(item.spellID) and IsGcdStandIn(item.spellID) then
+               return item.spellID
+            end
+         end
+      end
+   end
+
+   local function FindGcdSpell()
+      if C_Spell.GetSpellCooldown(GCD_SPELL_ID) then
+         return GCD_SPELL_ID
+      end
+      return FindGcdStandIn()
+   end
+
+   -- A stand-in's cooldown is secret in combat: it can't be read, used in math or even tested (its duration
+   -- object's IsZero & co. return secret booleans too). Instead, the game fills `timerBar` from the cooldown's
+   -- duration object by itself, and the bar's alpha comes from the cooldown's remaining percent run through a
+   -- curve, so it's only visible while the GCD runs. Neither needs the cooldown to be readable.
+   local function UsesTimerBar()
+      return gcdSpellID ~= nil and gcdSpellID ~= GCD_SPELL_ID
+   end
+
+   local timerDuration -- the duration object of the stand-in's latest cooldown (zero when there's none)
+
+   -- remaining percent -> alpha: 0 once the GCD is over, 1 while any of it is left
+   local visibleWhileRunning
+   local function GetVisibleWhileRunningCurve()
+      if not visibleWhileRunning then
+         visibleWhileRunning = C_CurveUtil.CreateCurve()
+         visibleWhileRunning:SetType(Enum.LuaCurveType.Linear)
+         visibleWhileRunning:AddPoint(0, 0)
+         visibleWhileRunning:AddPoint(0.001, 1)
+         visibleWhileRunning:AddPoint(1, 1)
+      end
+      return visibleWhileRunning
+   end
+
+   function CooldownBarGlobal:SPELLS_CHANGED()
+      if gcdSpellID ~= GCD_SPELL_ID then
+         gcdSpellID = nil -- look again on the next update (a newly learned spell may be the first stand-in)
+      end
+   end
+
+   function CooldownBarGlobal:UpdateTimerBar()
+      -- (the object itself isn't secret, only what's in it, so checking that there is one is fine)
+      local gcd = C_Spell.GetSpellCooldownDuration(gcdSpellID)
+      if not (gcd and (UnitAffectingCombat("player") or profileDB.combatOnly == false)) then
+         return
+      end
+
+      if not gcdBarFrame then
+         CooldownBarGlobal:SetupFrame()
+      end
+
+      -- the textures the readable cooldown uses stay empty (the lag can't be sized against a secret duration)
+      SetBarLength(gcdBarFrame.lagBarTexture, 0)
+      SetBarLength(gcdBarFrame.barTexture, 0)
+      gcdBarFrame.sparkTexture:Hide()
+
+      -- this event also fires for other cooldowns, when the stand-in's is zero: the bar's alpha then hides it
+      timerDuration = gcd
+      gcdBarFrame.timerBar:SetTimerDuration(gcd)
+      gcdBarFrame.timerSpark:SetShown(profileDB.spark)
+      gcdBarFrame.timerBar:Show()
+
+      -- Show the frame, which will cause it's update to start getting events (it sets the alpha every frame)
+      gcdBarFrame:Show()
    end
 
    function CooldownBarGlobal:ACTIONBAR_UPDATE_COOLDOWN()
-      -- 61304 is the 'Global Cooldown' spell
+      gcdSpellID = gcdSpellID or FindGcdSpell()
+      if not gcdSpellID then
+         return
+      end
+
+      if UsesTimerBar() then
+         CooldownBarGlobal:UpdateTimerBar()
+         return
+      end
+
       -- (the old GetSpellCooldown global was removed in 11.0; C_Spell returns a table instead)
-      local cooldown = C_Spell.GetSpellCooldown(61304)
+      local cooldown = C_Spell.GetSpellCooldown(gcdSpellID)
       if not cooldown then
+         return
+      end
+
+      -- doing math on a secret value errors (a stand-in spell's cooldown may be secret in combat), so skip those
+      if issecretvalue and (issecretvalue(cooldown.startTime) or issecretvalue(cooldown.duration)) then
          return
       end
       start, duration = cooldown.startTime, cooldown.duration
@@ -661,6 +796,30 @@ UWU:AddModuleChunk("CooldownBarGlobal", function()
    end
 
    function CooldownBarGlobal_OnUpdate(self, elapsed)
+      -- the game fills the timer bar by itself, so only its visibility is handled here
+      if UsesTimerBar() then
+         -- secret in combat, which SetAlpha takes as is; 'Move' mode keeps the (empty) bar visible
+         local alpha = timerDuration and timerDuration:EvaluateRemainingPercent(GetVisibleWhileRunningCurve()) or 0
+         self.timerBar:SetAlpha(alpha)
+         self:SetAlpha(moveMode and 1 or alpha)
+
+         -- once it's readable again (out of combat) that the GCD is over, really hide it
+         local expired = timerDuration == nil or timerDuration:HasExpired()
+         if not (issecretvalue and issecretvalue(expired)) and expired then
+            self.timerBar:Hide()
+            if not moveMode then
+               self:Hide()
+            end
+         end
+
+         -- whether it's visible can't be known in combat, so it only takes the mouse (to be dragged) in 'Move' mode,
+         -- rather than invisibly blocking clicks
+         if self:IsMouseEnabled() ~= moveMode then
+            self:EnableMouse(moveMode)
+         end
+         return
+      end
+
       -- Start may not be initialized if the first thing done is to enable the move mode
       if start ~= nil and GetTime() - start < duration then
          -- Find the percentage complete

@@ -4,11 +4,19 @@ This add-on is a collection of utils to improve your WoW playing experience.
 
 By default, all of the utils are enabled, but you can disable specific utils using the settings window.
 
+## WoW Forever
+
+The add-on also works on WoW Forever, from the same folder. Forever has no Dungeon Finder queue, no flying and no Zidormi, so anything that needs them is hidden there:
+
+- Auto Dungeon Queue doesn't load, so its settings, slash commands and keybindings are hidden.
+- Obvious Statuses only shows the combat status and the range indicator. The flight and phase statuses, and the options for arranging several statuses, are hidden.
+- Mobile Banking Timer only shows up for characters who know the Mobile Banking guild perk.
+
 ## Included Utils
 
 ### Auto Dungeon Queue
 
-Quickly enter dungeon queues at the press of a keybind or with a slash command.
+Quickly enter dungeon queues at the press of a keybind or with a slash command. (Not on WoW Forever, which has no Dungeon Finder queue.)
 
 - `/adq` opens or closes the Dungeon Finder.
 - `/adq join` queues you for a random dungeon with your saved roles, without opening any windows. If you have no saved roles yet, it opens the Dungeon Finder so you can pick them. Also available as a keybinding.
@@ -57,7 +65,7 @@ Use `/mbt move` to keep it visible, then hold Shift and left-click drag it into 
 
 ### Obvious Statuses
 
-Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), flight ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). Options: `/os`
+Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), flight ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). On WoW Forever, only the combat status is shown. Options: `/os`
 
 Each status, and the range indicator, can be turned on or off with the Enable/Disable checkboxes at the top of the General tab (with the range indicator off, its tab can still be changed, but its settings have no effect). The flight and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. Hold Shift and left-click drag to move it, or use the Positioning tab. With "Separate" on, each status gets its own frame that moves on its own (Reverse and Horizontal don't apply, and the Positioning tab has a dropdown to pick which status it moves).
 

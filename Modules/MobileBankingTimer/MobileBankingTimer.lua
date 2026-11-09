@@ -418,32 +418,36 @@ UWU:AddModuleChunk("MobileBankingTimer", function()
 
    local PREFIX = "|cFF00FF00Mobile Banking Timer:|r "
 
-   SLASH_UWUMOBILEBANKINGTIMER1 = "/mbt"
-   SlashCmdList["UWUMOBILEBANKINGTIMER"] = function(msg)
-      local command = string.lower(strtrim(msg or ""))
+   -- Run by UwU at login, or later once the character learns Mobile Banking. On WoW Forever, a character
+   -- without the perk never gets /mbt (see `isAvailable` in Core.lua).
+   UWU.modules.MobileBankingTimer.OnAvailable = function()
+      SLASH_UWUMOBILEBANKINGTIMER1 = "/mbt"
+      SlashCmdList["UWUMOBILEBANKINGTIMER"] = function(msg)
+         local command = string.lower(strtrim(msg or ""))
 
-      if command == "" then
-         if aceConfigDialog.OpenFrames[APP_NAME] then
-            aceConfigDialog:Close(APP_NAME)
+         if command == "" then
+            if aceConfigDialog.OpenFrames[APP_NAME] then
+               aceConfigDialog:Close(APP_NAME)
+            else
+               aceConfigDialog:Open(APP_NAME)
+            end
+         elseif command == "move" then
+            SetPreview(not previewing)
+         elseif command == "test" then
+            if endTime then
+               print(PREFIX .. "The timer is already running.")
+            else
+               StartTimer(TEST_DURATION)
+            end
+         elseif command == "reset" then
+            ResetPosition()
+            print(PREFIX .. "Moved back to its default spot.")
          else
-            aceConfigDialog:Open(APP_NAME)
+            print(PREFIX .. "Use /mbt to open the options, or /mbt move, test, or reset.")
          end
-      elseif command == "move" then
-         SetPreview(not previewing)
-      elseif command == "test" then
-         if endTime then
-            print(PREFIX .. "The timer is already running.")
-         else
-            StartTimer(TEST_DURATION)
-         end
-      elseif command == "reset" then
-         ResetPosition()
-         print(PREFIX .. "Moved back to its default spot.")
-      else
-         print(PREFIX .. "Use /mbt to open the options, or /mbt move, test, or reset.")
       end
-   end
 
-   -- a sub-item under UwU's own "Loaded!" message, which prints just before the modules load
-   print("  - |cFF00FF00Mobile Banking Timer|r loaded. Type /mbt for its options.")
+      -- a sub-item under UwU's own "Loaded!" message (printed at login, so after the other utils' lines)
+      print("  - |cFF00FF00Mobile Banking Timer|r loaded. Type /mbt for its options.")
+   end
 end)
