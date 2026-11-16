@@ -203,6 +203,14 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
             end
          end
 
+         -- checked after the mount bookkeeping above, so leaving an instance mounted doesn't count as mounting
+         if cameraView.disableInInstances then
+            local _, instanceType = IsInInstance()
+            if instanceType == "party" or instanceType == "raid" then
+               return
+            end
+         end
+
          if view and view >= 1 and view <= 5 then
             self.logger:Debug("Switching to camera view " .. view)
             SetView(view)

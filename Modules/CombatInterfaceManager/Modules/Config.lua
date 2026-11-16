@@ -26,8 +26,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          "CombatInterfaceManager",
          self:GetBlizzOptionsFrame(cim)
       )
-      -- the smallest an Ace window can be; fits the labels, 4 toggles & 4 dropdowns (resizing is turned off in Core.lua)
-      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 380)
+      -- the smallest an Ace window can be; fits the labels, 5 toggles & 4 dropdowns (resizing is turned off in Core.lua)
+      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 410)
       -- its page under Unusual WoW Utils in Options > AddOns is added by Core.lua (see ShowAvailableModules)
    end
 
@@ -158,6 +158,19 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
                sorting = cameraViewSorting,
                type = "select",
                values = cameraViewChoices,
+            },
+            cameraDisableInInstances = {
+               desc = "Leave the camera alone in dungeons and raids: none of the views above are switched to there. Hiding in combat still works.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.disableInInstances")
+               end,
+               name = "Disable in Dungeons/Raids?",
+               order = 400,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "disableInInstances", value)
+               end,
+               type = "toggle",
+               width = "full",
             },
          },
       }

@@ -20,6 +20,7 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          onLeaveCombat = 0,
          onMount = 0,
          onDismount = 0,
+         disableInInstances = false, -- leave the camera alone in dungeons & raids
       },
       isLoaded = {
          itemLock = nil,

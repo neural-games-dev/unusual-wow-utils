@@ -106,6 +106,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          rangeCrossColor = { r = 1, g = 1, b = 1 },
          rangeCrossScale = 1, -- on top of the indicator's own scale
          rangeHideIcon = false, -- only allowed while the cross is on, so the indicator never draws nothing
+         rangeHideInCombat = false,
       },
    }
 
@@ -165,6 +166,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          MAX_RANGE_CROSS_SCALE
       )
       db.rangeHideIcon = db.rangeHideIcon == true and db.rangeCross
+      db.rangeHideInCombat = db.rangeHideInCombat == true
    end
 
    ValidateSettings()
@@ -796,7 +798,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    end
 
    local function UpdateRangeShown()
-      rangeFrame:SetShown(db.enableRange and db.rangeSpell ~= "") -- hidden, its checks & sound stop too
+      -- hidden, its checks & sound stop too
+      rangeFrame:SetShown(
+         db.enableRange and db.rangeSpell ~= "" and not (state.inCombat and db.rangeHideInCombat)
+      )
       lastInRange = nil -- a different spell has a different range, so this isn't the target coming into range
       RefreshRange()
    end
@@ -813,7 +818,17 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    -- a new target shows straight away, instead of on the next check (and is silent if it's already in range)
    rangeFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-   rangeFrame:SetScript("OnEvent", function()
+   -- entering & leaving combat, for "Hide in Combat" (the statuses' frame sets the same state, in whichever order
+   -- the two frames get the event)
+   rangeFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+   rangeFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+   rangeFrame:SetScript("OnEvent", function(_, event)
+      if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+         state.inCombat = event == "PLAYER_REGEN_DISABLED"
+         UpdateRangeShown()
+         return
+      end
+
       lastInRange = nil
       RefreshRange()
    end)
@@ -1063,6 +1078,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- window is resized (or the Options > AddOns page is).
    local HALF_WIDTH_INPUT_WIDGET = "UWU-HalfWidth-EditBox"
    local HALF_WIDTH_SELECT_WIDGET = "UWU-HalfWidth-Dropdown"
+   local HALF_WIDTH_TOGGLE_WIDGET = "UWU-HalfWidth-CheckBox"
    local QUARTER_WIDTH_TOGGLE_WIDGET = "UWU-QuarterWidth-CheckBox"
    local THIRD_WIDTH_TOGGLE_WIDGET = "UWU-ThirdWidth-CheckBox"
 
@@ -1085,9 +1101,31 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
       RegisterRelativeWidthWidget(HALF_WIDTH_INPUT_WIDGET, "EditBox", 0.5)
       RegisterRelativeWidthWidget(HALF_WIDTH_SELECT_WIDGET, "Dropdown", 0.5)
+      RegisterRelativeWidthWidget(HALF_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.5)
       RegisterRelativeWidthWidget(QUARTER_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.25)
       RegisterRelativeWidthWidget(THIRD_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.33) -- 3 exact thirds could round past the row
    end
+
+   -- Empty space above a row of options. It's its own widget since Ace's rows have fixed gaps, and an empty
+   -- description row would add a whole line of text.
+   local SPACER_WIDGET = "UWU-Spacer"
+   local SPACER_HEIGHT = 8
+
+   LibStub("AceGUI-3.0"):RegisterWidgetType(SPACER_WIDGET, function()
+      local frame = CreateFrame("Frame", nil, UIParent)
+      frame:Hide()
+
+      return LibStub("AceGUI-3.0"):RegisterAsWidget({
+         type = SPACER_WIDGET,
+         frame = frame,
+         OnAcquire = function(self)
+            self:SetWidth(200)
+            self:SetHeight(SPACER_HEIGHT)
+         end,
+         SetText = function() end, -- Ace sets every description's text & font; this one has none
+         SetFontObject = function() end,
+      })
+   end, 1)
 
    local rangeOptions = {
       name = "Range",
@@ -1162,6 +1200,27 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             set = function(_, value)
                db.rangeSound = value
                PlayRangeSound(value)
+            end,
+         },
+         hideSpacer = {
+            order = 3.4,
+            name = "",
+            type = "description",
+            dialogControl = SPACER_WIDGET,
+            width = "full",
+         },
+         hideInCombat = {
+            order = 3.5,
+            name = "Hide in Combat",
+            desc = "Hide the range indicator (and silence its sound) while you're in combat.",
+            type = "toggle",
+            dialogControl = HALF_WIDTH_TOGGLE_WIDGET,
+            get = function()
+               return db.rangeHideInCombat
+            end,
+            set = function(_, value)
+               db.rangeHideInCombat = value
+               UpdateRangeShown()
             end,
          },
          scale = {
@@ -1239,13 +1298,13 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             end,
          },
          hideIcon = {
-            order = 4.4,
+            order = 3.6,
             name = "Hide Icon",
             desc = "Hide the icon & its tint, leaving only the scope cross, which turns green when your target is "
                .. "in range and red when it's too far away. The scope cross has to be on to hide the icon. You can "
                .. "still hold Shift and drag the empty square to move it.",
             type = "toggle",
-            width = "full",
+            dialogControl = HALF_WIDTH_TOGGLE_WIDGET,
             disabled = function()
                return not db.rangeCross
             end,
