@@ -411,8 +411,10 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
             playstyle = {
                order = 3.5,
                name = "Playstyle",
-               desc = "The playstyle your listing shows, the same choices as Create Listing's. Dungeon listings "
-                  .. "don't need one, so None lists you without it.",
+               desc = "The playstyle your listing is made with, the same choices as Create Listing's. Dungeon "
+                  .. "listings don't need one, so None lists you without it.\n\nIt's applied to your listing, but "
+                  .. "not necessarily displayed: Create Listing's own Playstyle dropdown doesn't change to match, "
+                  .. "and the Browse tab doesn't show playstyles.",
                type = "select",
                values = PLAYSTYLES,
                sorting = PLAYSTYLE_ORDER,
