@@ -1,14 +1,13 @@
 <Bindings>
    <!-- display names come from the BINDING_HEADER_/BINDING_NAME_ globals in Core.lua -->
    <!-- every binding goes in the shared "Unusual WoW Utils" category -->
-   <!-- WoW Forever loads Bindings_Camelot.xml instead, so keep the two in sync -->
+   <!-- WoW Forever loads Bindings_Camelot.xml instead, so keep the two in sync (except where noted) -->
 
    <!-- Auto Dungeon Queue (the functions only exist while its module is enabled) -->
+   <!-- one key joins & leaves the queue here; Forever keeps separate List Self & Delist bindings -->
+   <!-- (it keeps the old Join Queue binding's name, so a key already set for that carries over) -->
    <Binding name="AUTODUNGEONQUEUE_QUEUE" category="BINDING_HEADER_UNUSUALWOWUTILS">
-      if AutoDungeonQueue_Queue then AutoDungeonQueue_Queue() end
-   </Binding>
-   <Binding name="AUTODUNGEONQUEUE_LEAVE" category="BINDING_HEADER_UNUSUALWOWUTILS">
-      if AutoDungeonQueue_Leave then AutoDungeonQueue_Leave() end
+      if AutoDungeonQueue_ToggleQueue then AutoDungeonQueue_ToggleQueue() end
    </Binding>
    <Binding name="AUTODUNGEONQUEUE_CLEAR" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if AutoDungeonQueue_ClearRoles then AutoDungeonQueue_ClearRoles() end

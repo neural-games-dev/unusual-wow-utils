@@ -181,8 +181,11 @@ UWU:RegisterModule("QuestLogCounter", {
 -- Key Bindings search term for its /uwu key button.
 BINDING_HEADER_UNUSUALWOWUTILS = "Unusual WoW Utils" -- the Key Bindings category for all of our bindings
 local AUTO_DUNGEON_QUEUE_BINDING_PREFIX = "AutoDungeonQueue"
-BINDING_NAME_AUTODUNGEONQUEUE_QUEUE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Join Queue"
-BINDING_NAME_AUTODUNGEONQUEUE_LEAVE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Leave Queue"
+-- WoW Forever has no Dungeon Finder queue, so there ADQ lists you in Looking for Group instead.
+-- On Retail one binding joins & leaves the queue, so LEAVE is only in Bindings_Camelot.xml.
+BINDING_NAME_AUTODUNGEONQUEUE_QUEUE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX
+   .. (UWU.IS_FOREVER and ": List Self" or ": Join/Leave Queue")
+BINDING_NAME_AUTODUNGEONQUEUE_LEAVE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Delist"
 BINDING_NAME_AUTODUNGEONQUEUE_CLEAR = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Clear Saved Roles"
 local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
 BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
@@ -213,28 +216,51 @@ local function OpenKeyBindings(searchText)
    end)
 end
 
-UWU:RegisterModule("AutoDungeonQueue", {
-   title = "Auto Dungeon Queue",
-   desc = "Joins the dungeon queue with your last selected roles via a keybind or slash command.",
-   retailOnly = true, -- WoW Forever has no Dungeon Finder queue (its bindings are left out of Bindings_Camelot.xml)
-   slashCommands = { "/adq" },
-   commandHelp = {
-      { "/adq", "Open or close the Dungeon Finder" },
-      { "/adq join", "Join the dungeon queue with your saved roles (opens the Dungeon Finder if none are saved)" },
-      { "/adq leave", "Leave the dungeon queue" },
-      { "/adq save <tank||healer||DPS>", "Save the given role(s)" },
-      { "/adq save", "Save the roles ticked in the Dungeon Finder" },
-      { "/adq roles", "Show your saved roles" },
-      { "/adq clear", "Clear your saved roles" },
-      { "/adq help", "List the ADQ commands" },
-   },
-   -- no options window, so its /uwu button opens the game's Key Bindings instead
-   configIcon = KEY_BINDINGS_ICON,
-   configWord = "Keybinds", -- the button's hover tooltip
-   openConfig = function()
-      OpenKeyBindings(AUTO_DUNGEON_QUEUE_BINDING_PREFIX)
-   end,
-})
+local function OpenAutoDungeonQueueKeyBindings()
+   OpenKeyBindings(AUTO_DUNGEON_QUEUE_BINDING_PREFIX)
+end
+
+-- WoW Forever has no Dungeon Finder queue, so there ADQ lists you in Looking for Group instead, with an options
+-- window for which dungeons to list for
+if UWU.IS_FOREVER then
+   UWU:RegisterModule("AutoDungeonQueue", {
+      title = "Auto Dungeon Queue",
+      desc = "Lists you in Looking for Group for dungeons with your last selected roles via a keybind or slash command.",
+      slashCommands = { "/adq" },
+      commandHelp = {
+         { "/adq", "Open or close the options window" },
+         { "/adq join", "List yourself in Looking for Group with your saved roles" },
+         { "/adq leave", "Remove your Looking for Group listing" },
+         { "/adq save <tank||healer||DPS>", "Save the given role(s)" },
+         { "/adq save", "Save the roles ticked in Looking for Group" },
+         { "/adq roles", "Show your saved roles" },
+         { "/adq clear", "Clear your saved roles" },
+         { "/adq help", "List the ADQ commands" },
+      },
+      configApp = "AutoDungeonQueue",
+      openKeyBindings = OpenAutoDungeonQueueKeyBindings, -- for the Key Bindings button in its options window
+   })
+else
+   UWU:RegisterModule("AutoDungeonQueue", {
+      title = "Auto Dungeon Queue",
+      desc = "Joins (or leaves) the dungeon queue with your last selected roles via a keybind or slash command.",
+      slashCommands = { "/adq" },
+      commandHelp = {
+         { "/adq", "Open or close the Dungeon Finder" },
+         { "/adq join", "Join the dungeon queue with your saved roles (opens the Dungeon Finder if none are saved)" },
+         { "/adq leave", "Leave the dungeon queue" },
+         { "/adq save <tank||healer||DPS>", "Save the given role(s)" },
+         { "/adq save", "Save the roles ticked in the Dungeon Finder" },
+         { "/adq roles", "Show your saved roles" },
+         { "/adq clear", "Clear your saved roles" },
+         { "/adq help", "List the ADQ commands" },
+      },
+      -- no options window, so its /uwu button opens the game's Key Bindings instead
+      configIcon = KEY_BINDINGS_ICON,
+      configWord = "Keybinds", -- the button's hover tooltip
+      openConfig = OpenAutoDungeonQueueKeyBindings,
+   })
+end
 
 UWU:RegisterModule("ChatTabCycler", {
    title = "Chat Tab Cycler",
@@ -473,6 +499,7 @@ end
 -- Ace turns resizing back on whenever it reuses one of these pooled windows for anything else.
 local FIXED_SIZE_WINDOWS = {
    [addonName] = true, -- the /uwu settings window
+   AutoDungeonQueue = true, -- /adq (WoW Forever only)
    CombatInterfaceManager = true, -- /cim
    Compass = true, -- /compass
    MobileBankingTimer = true, -- /mbt

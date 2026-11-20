@@ -1,8 +1,20 @@
 <Bindings>
-   <!-- WoW Forever's copy of Bindings.xml, loaded there instead of it, so keep the two in sync -->
-   <!-- Auto Dungeon Queue's bindings are left out: Forever has no Dungeon Finder queue -->
+   <!-- WoW Forever's copy of Bindings.xml, loaded there instead of it, so keep the two in sync (except where noted) -->
    <!-- display names come from the BINDING_HEADER_/BINDING_NAME_ globals in Core.lua -->
    <!-- every binding goes in the shared "Unusual WoW Utils" category -->
+
+   <!-- Auto Dungeon Queue (the functions only exist while its module is enabled) -->
+   <!-- Forever has no Dungeon Finder queue, so these list & delist you in Looking for Group instead -->
+   <!-- (Retail has a single binding that joins & leaves the queue in place of these two) -->
+   <Binding name="AUTODUNGEONQUEUE_QUEUE" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if AutoDungeonQueue_Queue then AutoDungeonQueue_Queue() end
+   </Binding>
+   <Binding name="AUTODUNGEONQUEUE_LEAVE" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if AutoDungeonQueue_Leave then AutoDungeonQueue_Leave() end
+   </Binding>
+   <Binding name="AUTODUNGEONQUEUE_CLEAR" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if AutoDungeonQueue_ClearRoles then AutoDungeonQueue_ClearRoles() end
+   </Binding>
 
    <!-- Chat Tab Cycler (the functions only exist while its module is enabled) -->
    <Binding name="CHATTABCYCLER_NEXT" category="BINDING_HEADER_UNUSUALWOWUTILS">

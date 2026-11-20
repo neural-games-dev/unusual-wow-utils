@@ -26,8 +26,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          "CombatInterfaceManager",
          self:GetBlizzOptionsFrame(cim)
       )
-      -- the smallest an Ace window can be; fits the labels, 4 toggles & 4 dropdowns (resizing is turned off in Core.lua)
-      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 380)
+      -- the smallest an Ace window can be; fits the labels, 9 toggles & 4 dropdowns (resizing is turned off in Core.lua)
+      LibStub("AceConfigDialog-3.0"):SetDefaultSize("CombatInterfaceManager", 400, 485)
       -- its page under Unusual WoW Utils in Options > AddOns is added by Core.lua (see ShowAvailableModules)
    end
 
@@ -158,6 +158,73 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
                sorting = cameraViewSorting,
                type = "select",
                values = cameraViewChoices,
+            },
+            cameraDisableIntro = {
+               name = "Leave the camera alone in:",
+               order = 400,
+               type = "description",
+            },
+            cameraDisableInArenas = {
+               desc = "None of the views above are switched to in arenas. Hiding in combat still works.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.disableInArenas")
+               end,
+               name = "Arenas",
+               order = 401,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "disableInArenas", value)
+               end,
+               type = "toggle",
+            },
+            cameraDisableInBattlegrounds = {
+               desc = "None of the views above are switched to in battlegrounds. Hiding in combat still works.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.disableInBattlegrounds")
+               end,
+               name = "Battlegrounds",
+               order = 402,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "disableInBattlegrounds", value)
+               end,
+               type = "toggle",
+            },
+            cameraDisableInDelves = {
+               desc = "None of the views above are switched to in delves. Hiding in combat still works.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.disableInDelves")
+               end,
+               -- WoW Forever has no delves
+               hidden = UWU.IS_FOREVER,
+               name = "Delves",
+               order = 403,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "disableInDelves", value)
+               end,
+               type = "toggle",
+            },
+            cameraDisableInDungeons = {
+               desc = "None of the views above are switched to in dungeons. Hiding in combat still works.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.disableInDungeons")
+               end,
+               name = "Dungeons",
+               order = 404,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "disableInDungeons", value)
+               end,
+               type = "toggle",
+            },
+            cameraDisableInRaids = {
+               desc = "None of the views above are switched to in raids. Hiding in combat still works.",
+               get = function()
+                  return cim.utils:GetDbValue("cameraView.disableInRaids")
+               end,
+               name = "Raids",
+               order = 405,
+               set = function(info, value)
+                  cim.utils:SetDbTableItem("cameraView", "disableInRaids", value)
+               end,
+               type = "toggle",
             },
          },
       }
