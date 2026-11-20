@@ -19,15 +19,16 @@ The add-on also works on WoW Forever, from the same folder. Forever has no Dunge
 Quickly enter dungeon queues at the press of a keybind or with a slash command. On WoW Forever, which has no Dungeon Finder queue, it lists you in the Looking for Group window instead (see below).
 
 - `/adq` opens or closes the Dungeon Finder.
-- `/adq join` queues you for a random dungeon with your saved roles, without opening any windows. If you have no saved roles yet, it opens the Dungeon Finder so you can pick them. Also available as a keybinding.
-- `/adq leave` leaves the dungeon queue. Also available as a keybinding.
+- `/adq join` queues you for a random dungeon with your saved roles, without opening any windows. If you have no saved roles yet, it opens the Dungeon Finder so you can pick them.
+- `/adq leave` leaves the dungeon queue.
+- The "Join/Leave Queue" keybinding does both: it leaves the queue if you're waiting in it, and joins otherwise.
 - `/adq save <tank|healer|DPS>` saves your role(s), e.g. `/adq save tank DPS`. It also ticks the matching boxes in the Dungeon Finder. Roles your class can't fill are rejected.
 - `/adq save` saves whichever roles are currently ticked in the Dungeon Finder.
 - `/adq roles` shows your saved roles.
 - `/adq clear` clears your saved roles and unticks them in the Dungeon Finder (also available as a keybinding), so the next `/adq join` opens the Dungeon Finder to pick them again.
 - `/adq help` lists the commands.
 
-On WoW Forever, the same commands and keybindings ("List Self", "Delist" and "Clear Saved Roles") work through the Looking for Group window's Create Listing tab, without opening it:
+On WoW Forever, the same commands, and separate "List Self" and "Delist" keybindings (plus "Clear Saved Roles"), work through the Looking for Group window's Create Listing tab, without opening it:
 
 - `/adq join` lists you for dungeons with your saved roles. The roles are your Create Listing role check boxes, so ticking them there saves them too. Forever's listings have no leader role.
 - Which dungeons it lists you for is set in its options window (`/adq`, or the cog in `/uwu`): **All dungeons for my level** (every dungeon whose suggested levels fit yours, the default) or **My last listing's dungeons** (the dungeons you ticked the last time you listed yourself in Create Listing). The same window has a **Playstyle** dropdown (Create Listing's choices, or None to list without one).
@@ -43,7 +44,7 @@ This util allows you to go whichever direction your heart desires, PLUS, it has 
 
 ### Combat Interface Manager
 
-Hides UI elements (chat, minimap, quest tracker) when you enter combat and restores them when you leave. It can also switch to one of your saved camera views (the "Set View 1-5" keybindings) when you enter and/or leave combat, and when you mount and/or dismount, optionally leaving the camera alone in dungeons and raids. Options: `/cim`
+Hides UI elements (chat, minimap, quest tracker) when you enter combat and restores them when you leave. It can also switch to one of your saved camera views (the "Set View 1-5" keybindings) when you enter and/or leave combat, and when you mount and/or dismount, optionally leaving the camera alone in arenas, battlegrounds, delves (Retail only), dungeons and/or raids. Options: `/cim`
 
 ### Compass
 
@@ -73,7 +74,7 @@ Use `/mbt move` to keep it visible, then hold Shift and left-click drag it into 
 
 Shows up to three statuses as a stack of rectangles, in your faction's color. From bottom to top: combat ("Fighting" or "Roaming"), flight ("Dragon" when Skyriding is on, else "Steady"), and the zone's phase ("Past" or "Present", for zones where Zidormi can send you back in time). On WoW Forever, only the combat status is shown. Options: `/os`
 
-Each status, and the range indicator, can be turned on or off with the Enable/Disable checkboxes at the top of the General tab (with the range indicator off, its tab can still be changed, but its settings have no effect). The flight and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. Hold Shift and left-click drag to move it, or use the Positioning tab. With "Separate" on, each status gets its own frame that moves on its own (Reverse and Horizontal don't apply, and the Positioning tab has a dropdown to pick which status it moves).
+Each status, and the range indicator, can be turned on or off with the Enable/Disable checkboxes at the top of the General tab (with the range indicator off, its tab can still be changed, but its settings have no effect). The flight and phase rectangles can each be hidden while you're in combat, and the phase one can optionally always show "Present" outside of Zidormi's zones. "Hide When Map Is Open" hides everything, the range indicator included, while the world map is open. Hold Shift and left-click drag to move it, or use the Positioning tab. With "Separate" on, each status gets its own frame that moves on its own (Reverse and Horizontal don't apply, and the Positioning tab has a dropdown to pick which status it moves).
 
 It also has a range indicator: a separate square that shows whether your target is in range of a spell you name on the Range tab. An open eye under a green tint means it's in range, and a closed eye under a red tint means it's too far away. With no target (or one the spell can't be cast on), it shows the spell's icon, greyed out. If no spell by that name is found, it shows the red question mark. It's hidden while no spell is named. The Range tab also has a dropdown of sounds to play when your target comes into range (the game's own, plus any your other addons share through LibSharedMedia; click a row's speaker icon to preview it), sets its scale and position, can hide it while you're in combat, can draw a scope cross over it in a color and size you pick (with the cross on, the icon can be hidden, leaving only the cross, which then turns green in range and red out of range), and you can hold Shift and left-click drag it on its own.
 

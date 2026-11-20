@@ -86,6 +86,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          hideIcons = false,
          hideFlightInCombat = false,
          hidePhaseInCombat = false,
+         hideWithMap = false, -- hide the statuses & the range indicator while the world map is open
          -- the stack's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
          y = 0,
@@ -143,6 +144,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
       db.hideFlightInCombat = db.hideFlightInCombat == true
       db.hidePhaseInCombat = db.hidePhaseInCombat == true
+      db.hideWithMap = db.hideWithMap == true
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
       db.rangeSpell = type(db.rangeSpell) == "string" and strtrim(db.rangeSpell) or ""
@@ -340,7 +342,13 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       inCombat = InCombatLockdown(),
       skyriding = false,
       phase = nil, -- "Past", "Present", or nil when this zone has no phase
+      mapOpen = false, -- the world map is showing
    }
+
+   -- "Hide When Map Is Open" hides everything, the range indicator too
+   local function IsHiddenByMap()
+      return db.hideWithMap and state.mapOpen
+   end
 
    local function ApplyColor()
       local color = FACTION_COLORS[UnitFactionGroup("player")] or NEUTRAL_COLOR
@@ -432,10 +440,11 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       flight.label:SetText(state.skyriding and "Dragon" or "Steady")
       SetIcon(flight, { texture = state.flightIcon or FLIGHT_FALLBACK_ICON })
 
+      local shown = not IsHiddenByMap()
       Layout({
-         db.enableCombat,
-         FLIGHT_AND_PHASE_SUPPORTED and db.enableFlight and not (state.inCombat and db.hideFlightInCombat),
-         FLIGHT_AND_PHASE_SUPPORTED and db.enablePhase and state.phase ~= nil
+         shown and db.enableCombat,
+         shown and FLIGHT_AND_PHASE_SUPPORTED and db.enableFlight and not (state.inCombat and db.hideFlightInCombat),
+         shown and FLIGHT_AND_PHASE_SUPPORTED and db.enablePhase and state.phase ~= nil
             and not (state.inCombat and db.hidePhaseInCombat),
       })
    end
@@ -801,6 +810,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       -- hidden, its checks & sound stop too
       rangeFrame:SetShown(
          db.enableRange and db.rangeSpell ~= "" and not (state.inCombat and db.rangeHideInCombat)
+            and not IsHiddenByMap()
       )
       lastInRange = nil -- a different spell has a different range, so this isn't the target coming into range
       RefreshRange()
@@ -851,6 +861,41 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    end
 
    UpdateRangeShown()
+
+   --## ==========================================================================
+   --## WORLD MAP (for "Hide When Map Is Open")
+   --## ==========================================================================
+   local function SetMapOpen(isOpen)
+      state.mapOpen = isOpen
+      if db.hideWithMap then
+         Refresh()
+         UpdateRangeShown()
+      end
+   end
+
+   local function WatchWorldMap()
+      WorldMapFrame:HookScript("OnShow", function()
+         SetMapOpen(true)
+      end)
+      WorldMapFrame:HookScript("OnHide", function()
+         SetMapOpen(false)
+      end)
+      SetMapOpen(WorldMapFrame:IsShown())
+   end
+
+   -- the world map is load-on-demand, so it may not exist yet
+   if WorldMapFrame then
+      WatchWorldMap()
+   else
+      local mapLoader = CreateFrame("Frame")
+      mapLoader:RegisterEvent("ADDON_LOADED")
+      mapLoader:SetScript("OnEvent", function(self, _, loadedAddonName)
+         if loadedAddonName == "Blizzard_WorldMap" then
+            self:UnregisterEvent("ADDON_LOADED")
+            WatchWorldMap()
+         end
+      end)
+   end
 
    --## ==========================================================================
    --## SETTINGS WINDOW (/os, the /uwu cog & Options > AddOns)
@@ -994,7 +1039,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local positioningOptions = {
       name = "Positioning",
       type = "group",
-      order = 2,
+      order = 3,
       args = AddPositionOptions({
          intro = {
             order = 1,
@@ -1130,7 +1175,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local rangeOptions = {
       name = "Range",
       type = "group",
-      order = 3,
+      order = 2,
       args = AddPositionOptions({
          intro = {
             order = 1,
@@ -1400,6 +1445,16 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return option
    end
 
+   -- for an option that applies to the range indicator too, which UpdateAll doesn't redraw
+   local function AlsoUpdatesRange(option)
+      local set = option.set
+      option.set = function(info, value)
+         set(info, value)
+         UpdateRangeShown()
+      end
+      return option
+   end
+
    -- one of the row of four checkboxes that turn a feature on or off
    local function EnableCheckbox(order, name, desc, key)
       local option = Checkbox(order, name, desc, key)
@@ -1419,7 +1474,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
-      childGroups = "tab", -- General, Positioning & Range as tabs (in /os and in Options > AddOns)
+      childGroups = "tab", -- General, Range & Positioning as tabs (in /os and in Options > AddOns)
       args = {
          positioning = positioningOptions,
          range = rangeOptions,
@@ -1503,6 +1558,12 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                   "Hide Phase in Combat",
                   "Hide the Past / Present status while you're in combat.",
                   "hidePhaseInCombat"
+               )),
+               hideWithMap = AlsoUpdatesRange(Checkbox(
+                  3.5,
+                  "Hide When Map Is Open",
+                  "Hide the statuses and the range indicator while the world map is open.",
+                  "hideWithMap"
                )),
                hideIcons = Checkbox(
                   4,

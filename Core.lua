@@ -181,11 +181,11 @@ UWU:RegisterModule("QuestLogCounter", {
 -- Key Bindings search term for its /uwu key button.
 BINDING_HEADER_UNUSUALWOWUTILS = "Unusual WoW Utils" -- the Key Bindings category for all of our bindings
 local AUTO_DUNGEON_QUEUE_BINDING_PREFIX = "AutoDungeonQueue"
--- WoW Forever has no Dungeon Finder queue, so there ADQ lists you in Looking for Group instead
+-- WoW Forever has no Dungeon Finder queue, so there ADQ lists you in Looking for Group instead.
+-- On Retail one binding joins & leaves the queue, so LEAVE is only in Bindings_Camelot.xml.
 BINDING_NAME_AUTODUNGEONQUEUE_QUEUE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX
-   .. (UWU.IS_FOREVER and ": List Self" or ": Join Queue")
-BINDING_NAME_AUTODUNGEONQUEUE_LEAVE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX
-   .. (UWU.IS_FOREVER and ": Delist" or ": Leave Queue")
+   .. (UWU.IS_FOREVER and ": List Self" or ": Join/Leave Queue")
+BINDING_NAME_AUTODUNGEONQUEUE_LEAVE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Delist"
 BINDING_NAME_AUTODUNGEONQUEUE_CLEAR = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Clear Saved Roles"
 local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
 BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
@@ -243,7 +243,7 @@ if UWU.IS_FOREVER then
 else
    UWU:RegisterModule("AutoDungeonQueue", {
       title = "Auto Dungeon Queue",
-      desc = "Joins the dungeon queue with your last selected roles via a keybind or slash command.",
+      desc = "Joins (or leaves) the dungeon queue with your last selected roles via a keybind or slash command.",
       slashCommands = { "/adq" },
       commandHelp = {
          { "/adq", "Open or close the Dungeon Finder" },

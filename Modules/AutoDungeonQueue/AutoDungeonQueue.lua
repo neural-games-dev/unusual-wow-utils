@@ -152,8 +152,12 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
       rolecheck = true,
    }
 
+   function retail.IsInQueue()
+      return LEAVABLE_QUEUE_MODES[GetLFGMode(LE_LFG_CATEGORY_LFD)] == true
+   end
+
    function retail.Leave()
-      if not LEAVABLE_QUEUE_MODES[GetLFGMode(LE_LFG_CATEGORY_LFD)] then
+      if not retail.IsInQueue() then
          print(ERROR_PREFIX .. "Not queued for a dungeon.")
          return
       end
@@ -599,6 +603,18 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
 
    function AutoDungeonQueue_Leave()
       backend.Leave()
+   end
+
+   -- Retail's single join/leave binding: leaves while waiting in the queue, joins otherwise
+   -- (Forever keeps separate List Self & Delist bindings)
+   if not UWU.IS_FOREVER then
+      function AutoDungeonQueue_ToggleQueue()
+         if retail.IsInQueue() then
+            retail.Leave()
+         else
+            AutoJoinDungeonQueue()
+         end
+      end
    end
 
    function AutoDungeonQueue_ClearRoles()

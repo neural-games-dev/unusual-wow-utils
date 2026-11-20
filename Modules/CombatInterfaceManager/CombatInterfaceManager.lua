@@ -176,6 +176,27 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       f:SetScript("OnEvent", ToggleZoneMap)
    end
 
+   -- delves are scenarios on Retail, told apart from other scenarios by their difficulty
+   local DELVE_DIFFICULTY_ID = 208
+
+   -- true when the "Leave the camera alone in" options cover the instance the player is in
+   local function IsCameraDisabledHere(cameraView)
+      local _, instanceType, difficultyID = GetInstanceInfo()
+      if instanceType == "party" then
+         return cameraView.disableInDungeons
+      elseif instanceType == "raid" then
+         return cameraView.disableInRaids
+      elseif instanceType == "pvp" then
+         return cameraView.disableInBattlegrounds
+      elseif instanceType == "arena" then
+         return cameraView.disableInArenas
+      elseif difficultyID == DELVE_DIFFICULTY_ID then
+         -- the option is hidden on WoW Forever, so a value saved on Retail is ignored there
+         return cameraView.disableInDelves and not UWU.IS_FOREVER
+      end
+      return false
+   end
+
    function CombatInterfaceManager:RegisterCameraViewListener()
       -- recalls the user's saved camera views (the "Set View n" keybindings); a slot that was never saved does nothing
       local wasMounted = IsMounted()
@@ -204,11 +225,8 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          end
 
          -- checked after the mount bookkeeping above, so leaving an instance mounted doesn't count as mounting
-         if cameraView.disableInInstances then
-            local _, instanceType = IsInInstance()
-            if instanceType == "party" or instanceType == "raid" then
-               return
-            end
+         if IsCameraDisabledHere(cameraView) then
+            return
          end
 
          if view and view >= 1 and view <= 5 then

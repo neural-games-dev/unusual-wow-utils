@@ -20,7 +20,12 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
          onLeaveCombat = 0,
          onMount = 0,
          onDismount = 0,
-         disableInInstances = false, -- leave the camera alone in dungeons & raids
+         -- leave the camera alone in these kinds of instance
+         disableInArenas = false,
+         disableInBattlegrounds = false,
+         disableInDelves = false, -- Retail only (WoW Forever has no delves)
+         disableInDungeons = false,
+         disableInRaids = false,
       },
       isLoaded = {
          itemLock = nil,
