@@ -4,7 +4,7 @@
    <!-- WoW Forever loads Bindings_Camelot.xml instead, so keep the two in sync (except where noted) -->
 
    <!-- Auto Dungeon Queue (the functions only exist while its module is enabled) -->
-   <!-- one key joins & leaves the queue here; Forever keeps separate List Self & Delist bindings -->
+   <!-- one key joins & leaves the queue (on Forever, lists & delists you in Looking for Group) -->
    <!-- (it keeps the old Join Queue binding's name, so a key already set for that carries over) -->
    <Binding name="AUTODUNGEONQUEUE_QUEUE" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if AutoDungeonQueue_ToggleQueue then AutoDungeonQueue_ToggleQueue() end
@@ -19,6 +19,37 @@
    </Binding>
    <Binding name="CHATTABCYCLER_PREV" category="BINDING_HEADER_UNUSUALWOWUTILS">
       if ChatTabCycler_PrevTab then ChatTabCycler_PrevTab() end
+   </Binding>
+   <!-- the docked tabs from left to right; nothing happens if there is no tab at that spot -->
+   <Binding name="CHATTABCYCLER_TAB1" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(1) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB2" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(2) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB3" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(3) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB4" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(4) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB5" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(5) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB6" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(6) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB7" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(7) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB8" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(8) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB9" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(9) end
+   </Binding>
+   <Binding name="CHATTABCYCLER_TAB10" category="BINDING_HEADER_UNUSUALWOWUTILS">
+      if ChatTabCycler_GoToTab then ChatTabCycler_GoToTab(10) end
    </Binding>
 
    <!-- Compass (the function only exists while its module is enabled) -->

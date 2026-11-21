@@ -28,7 +28,7 @@ Quickly enter dungeon queues at the press of a keybind or with a slash command. 
 - `/adq clear` clears your saved roles and unticks them in the Dungeon Finder (also available as a keybinding), so the next `/adq join` opens the Dungeon Finder to pick them again.
 - `/adq help` lists the commands.
 
-On WoW Forever, the same commands, and separate "List Self" and "Delist" keybindings (plus "Clear Saved Roles"), work through the Looking for Group window's Create Listing tab, without opening it:
+On WoW Forever, the same commands and keybindings (a "List/Delist" one that delists you if you're listed and lists you otherwise, plus "Clear Saved Roles") work through the Looking for Group window's Create Listing tab, without opening it:
 
 - `/adq join` lists you for dungeons with your saved roles. The roles are your Create Listing role check boxes, so ticking them there saves them too. Forever's listings have no leader role.
 - Which dungeons it lists you for is set in its options window (`/adq`, or the cog in `/uwu`): **All dungeons for my level** (every dungeon whose suggested levels fit yours, the default) or **My last listing's dungeons** (the dungeons you ticked the last time you listed yourself in Create Listing). The same window has a **Playstyle** dropdown (Create Listing's choices, or None to list without one).
@@ -41,6 +41,8 @@ Just like your web browser, cycle through your chat tabs going forward AND backw
 Yes, there is a default keybind to go to the next tab, BUT... it only goes forward!
 
 This util allows you to go whichever direction your heart desires, PLUS, it has better highlighting of which tab is actually active!
+
+It also has "Go To Tab 1" through "Go To Tab 10" keybindings to jump straight to a tab. Tabs are numbered by where they sit in the chat dock, from left to right, so dragging a tab to a new spot changes its number. Floating (undocked) chat windows aren't counted.
 
 ### Combat Interface Manager
 
