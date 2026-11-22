@@ -268,8 +268,12 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
       return activityIDs
    end
 
+   function forever.IsInQueue()
+      return C_LFGList.HasActiveEntryInfo() == true
+   end
+
    function forever.Join(ApplySavedRoles)
-      if C_LFGList.HasActiveEntryInfo() then
+      if forever.IsInQueue() then
          print(ERROR_PREFIX .. "Already listed in Looking for Group!")
          return
       end
@@ -299,7 +303,7 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
    end
 
    function forever.Leave()
-      if not C_LFGList.HasActiveEntryInfo() then
+      if not forever.IsInQueue() then
          print(ERROR_PREFIX .. "Not listed in Looking for Group.")
          return
       end
@@ -371,8 +375,8 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
          args = {
             intro = {
                order = 1,
-               name = "The List Self keybind (or /adq join) lists you in Looking for Group with your saved "
-                  .. "roles, without opening any windows.\n ",
+               name = "The List/Delist keybind (or /adq join) lists you in Looking for Group with your saved "
+                  .. "roles, without opening any windows. Pressed while you're listed, it delists you.\n ",
                type = "description",
                fontSize = "medium",
                width = "full",
@@ -433,7 +437,7 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
             keybinds = {
                order = 4,
                name = "Key Bindings",
-               desc = "Set the List Self, Delist & Clear Saved Roles keybinds.",
+               desc = "Set the List/Delist & Clear Saved Roles keybinds.",
                type = "execute",
                func = function()
                   LibStub("AceConfigDialog-3.0"):Close(OPTIONS_APP)
@@ -597,23 +601,13 @@ UWU:AddModuleChunk("AutoDungeonQueue", function()
    SlashCmdList["AUTODUNGEONQUEUE"] = SlashCommandHandler
 
    -- Global functions for keybindings
-   function AutoDungeonQueue_Queue()
-      AutoJoinDungeonQueue()
-   end
-
-   function AutoDungeonQueue_Leave()
-      backend.Leave()
-   end
-
-   -- Retail's single join/leave binding: leaves while waiting in the queue, joins otherwise
-   -- (Forever keeps separate List Self & Delist bindings)
-   if not UWU.IS_FOREVER then
-      function AutoDungeonQueue_ToggleQueue()
-         if retail.IsInQueue() then
-            retail.Leave()
-         else
-            AutoJoinDungeonQueue()
-         end
+   -- The single join/leave binding: leaves while waiting in the queue (on Forever, delists you while
+   -- listed), joins otherwise
+   function AutoDungeonQueue_ToggleQueue()
+      if backend.IsInQueue() then
+         backend.Leave()
+      else
+         AutoJoinDungeonQueue()
       end
    end
 

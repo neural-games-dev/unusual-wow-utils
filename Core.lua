@@ -182,14 +182,16 @@ UWU:RegisterModule("QuestLogCounter", {
 BINDING_HEADER_UNUSUALWOWUTILS = "Unusual WoW Utils" -- the Key Bindings category for all of our bindings
 local AUTO_DUNGEON_QUEUE_BINDING_PREFIX = "AutoDungeonQueue"
 -- WoW Forever has no Dungeon Finder queue, so there ADQ lists you in Looking for Group instead.
--- On Retail one binding joins & leaves the queue, so LEAVE is only in Bindings_Camelot.xml.
+-- One binding joins & leaves the queue (or lists & delists you).
 BINDING_NAME_AUTODUNGEONQUEUE_QUEUE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX
-   .. (UWU.IS_FOREVER and ": List Self" or ": Join/Leave Queue")
-BINDING_NAME_AUTODUNGEONQUEUE_LEAVE = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Delist"
+   .. (UWU.IS_FOREVER and ": List/Delist" or ": Join/Leave Queue")
 BINDING_NAME_AUTODUNGEONQUEUE_CLEAR = AUTO_DUNGEON_QUEUE_BINDING_PREFIX .. ": Clear Saved Roles"
 local CHAT_TAB_CYCLER_BINDING_PREFIX = "ChatTabCycler"
 BINDING_NAME_CHATTABCYCLER_NEXT = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Next"
 BINDING_NAME_CHATTABCYCLER_PREV = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Prev"
+for index = 1, 10 do -- CHATTABCYCLER_TAB1-10, the docked tabs from left to right
+   _G["BINDING_NAME_CHATTABCYCLER_TAB" .. index] = CHAT_TAB_CYCLER_BINDING_PREFIX .. ": Go To Tab " .. index
+end
 BINDING_NAME_COMPASS_TOGGLE = "Compass: Toggle Visibility"
 
 local KEY_BINDINGS_ICON = "Interface\\Icons\\INV_Misc_Key_03"
@@ -264,7 +266,7 @@ end
 
 UWU:RegisterModule("ChatTabCycler", {
    title = "Chat Tab Cycler",
-   desc = "Keybinds to cycle your chat tabs forward AND backward.",
+   desc = "Keybinds to cycle your chat tabs forward AND backward, or go straight to one.",
    -- no options window, so its /uwu button opens the game's Key Bindings instead
    configIcon = KEY_BINDINGS_ICON,
    configWord = "Keybinds",

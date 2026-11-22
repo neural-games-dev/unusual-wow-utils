@@ -54,12 +54,38 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
       -- TODO **[G]** :: Add some verbose debug logging here
       local num_chat_frames = FCF_GetNumActiveChatFrames()
 
+      -- the chat dock's tab that was selected when combat started, to select again after it
+      local selected_dock_frame
+
+      -- the chat dock's selected tab (nil if there's no dock)
+      local function GetSelectedDockFrame()
+         if not GENERAL_CHAT_DOCK then
+            return nil
+         end
+         return FCFDock_GetSelectedWindow and FCFDock_GetSelectedWindow(GENERAL_CHAT_DOCK)
+            or GENERAL_CHAT_DOCK.selected
+      end
+
+      -- whether `chat_frame` is still one of the dock's tabs (it may have been closed or undocked meanwhile)
+      local function IsDocked(chat_frame)
+         for _, docked_frame in ipairs(GENERAL_CHAT_DOCK and GENERAL_CHAT_DOCK.DOCKED_CHAT_FRAMES or {}) do
+            if docked_frame == chat_frame then
+               return true
+            end
+         end
+         return false
+      end
+
       -- not sure what this incoming `self` is, but keeping for ref
       local function ToggleChatFrames(_self, event)
          local is_in_combat = event == "PLAYER_REGEN_DISABLED"
          local is_out_of_combat = event == "PLAYER_REGEN_ENABLED"
 
          if self.db.profile.isHiding.chatFrame then
+            if is_in_combat then
+               selected_dock_frame = GetSelectedDockFrame()
+            end
+
             for i = 1, num_chat_frames, 1 do
                -- TODO **[G]** :: do something extra about the "voice" tab/chat frame that exists
                local chat_frame = _G["ChatFrame" .. i]
@@ -80,11 +106,17 @@ UWU:AddModuleChunk("CombatInterfaceManager", function()
                end
             end
 
+            -- Showing every chat frame leaves all the docked tabs showing at once, so one is selected again,
+            -- which hides the rest: the one that was selected before combat, if it's still docked, else the first
             if is_out_of_combat then
-               local chat_frame_1 = _G["ChatFrame1"]
+               local chat_frame_to_select = selected_dock_frame
+               if not (chat_frame_to_select and IsDocked(chat_frame_to_select)) then
+                  chat_frame_to_select = _G["ChatFrame1"]
+               end
+               selected_dock_frame = nil
 
-               if chat_frame_1 then
-                  FCF_SelectDockFrame(chat_frame_1)
+               if chat_frame_to_select then
+                  FCF_SelectDockFrame(chat_frame_to_select)
                else
                   self.logger:Debug(self.chalk:warn("ToggleChatFrames: Chat frame 1 not found!"))
                end

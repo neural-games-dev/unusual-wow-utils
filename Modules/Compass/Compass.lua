@@ -1,5 +1,5 @@
 -- Wrapped as an Unusual WoW Utils module: this only runs when "Compass" is enabled.
-local _, UWU = ...
+local addonFolder, UWU = ...
 
 UWU:AddModuleChunk("Compass", function()
    local addonName = "Compass"
@@ -25,6 +25,7 @@ UWU:AddModuleChunk("Compass", function()
          invertBars = false,
          hideInCombat = false,
          hideDegrees = false,
+         minimapOverlay = false, -- draw the Dial over the minimap instead of in its own frame
          -- the compass's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
          y = 0,
@@ -57,6 +58,11 @@ UWU:AddModuleChunk("Compass", function()
       db.invertBars = db.invertBars == true
       db.hideInCombat = db.hideInCombat == true
       db.hideDegrees = db.hideDegrees == true
+      db.minimapOverlay = db.minimapOverlay == true
+      -- nil until the Rotate Minimap checkbox is used, which leaves the game's own setting alone
+      if type(db.rotateMinimap) ~= "boolean" then
+         db.rotateMinimap = nil
+      end
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
 
@@ -73,7 +79,7 @@ UWU:AddModuleChunk("Compass", function()
    --## HUD
    --## ==========================================================================
    local SIZE = 140
-   local RING_RADIUS = 50
+   local RING_RADIUS = 40 -- the Dial's letters, inside its tick marks
 
    -- the 8 headings drawn on the ring, as a bearing in degrees clockwise from north
    local HEADINGS = {
@@ -87,40 +93,204 @@ UWU:AddModuleChunk("Compass", function()
       { label = "NW", bearing = 315 },
    }
 
-   -- the main directions' letter colors (the in-between ones stay grey)
-   local DIRECTION_COLORS = {
-      N = { 1, 0.2, 0.2, 1 }, -- red
-      W = { 0.3, 0.55, 1, 1 }, -- blue
-      E = { 0.2, 0.9, 0.2, 1 }, -- green
-      S = { 1, 0.9, 0.1, 1 }, -- yellow
-   }
-
-   local frame = CreateFrame("Frame", "UWUCompassFrame", UIParent, "BackdropTemplate")
+   local frame = CreateFrame("Frame", "UWUCompassFrame", UIParent)
    frame:SetSize(SIZE, SIZE)
    frame:SetFrameStrata("MEDIUM")
    frame:SetScale(db.scale)
-   frame:SetBackdrop({
-      bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-      edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", -- rounded corners
-      tile = true,
-      tileSize = 16,
-      edgeSize = 16,
-      insets = { left = 4, right = 4, top = 4, bottom = 4 },
-   })
 
+   -- "As Minimap Overlay": the Dial drawn over the minimap, instead of in its own frame
+   local function IsMinimapOverlay()
+      return db.style == "dial" and db.minimapOverlay and Minimap ~= nil
+   end
+
+   -- with Rotate Minimap off, the minimap stays north-up (and its arrow turns instead)
+   local function IsMinimapRotating()
+      local GetCVarBool = C_CVar and C_CVar.GetCVarBool or GetCVarBool -- older clients only have the global
+      return GetCVarBool("rotateMinimap") == true
+   end
+
+   -- SexyMap has a Rotate Minimap option of its own (and applies it itself), so ours is only offered without it
+   local function HasSexyMap()
+      return C_AddOns.IsAddOnLoaded("SexyMap")
+   end
+
+   -- The game doesn't keep Rotate Minimap across reloads (and has no checkbox for it), so the Compass's checkbox is
+   -- saved & applied again at each login. Until that's been used, the game's own setting is left alone.
+   local function ApplyMinimapRotation()
+      if db.rotateMinimap == nil or HasSexyMap() then
+         return
+      end
+      local SetCVar = C_CVar and C_CVar.SetCVar or SetCVar -- older clients only have the global
+      SetCVar("rotateMinimap", db.rotateMinimap and "1" or "0")
+   end
+
+   --## Instrument skin ----------------------------------------------------------
+   -- Both styles are skinned like an aircraft heading indicator: a charcoal case with rounded corners & a screw
+   -- hole in each, around a window with a thin brass bezel, with the face (the Background color) inside it. The
+   -- Bars' window is a rectangle the strip's size, and the Dial's is round. The case, bezel & face never overlap,
+   -- so see-through colors stay even all over.
+   local CASE_MARGIN = 6 -- the case's width around the window (and the Bars' case corners' radius)
+   local BEZEL_WIDTH = 2
+   local INSTRUMENT_INSET = CASE_MARGIN + BEZEL_WIDTH -- from the frame's edge to the face's
+   local CASE_COLOR = { 0.16, 0.16, 0.16 } -- charcoal
+   local BEZEL_COLOR = { 0.71, 0.57, 0.35 } -- brass
+   local SCREW_COLOR = { 0.05, 0.05, 0.05 } -- the holes, darker than the case
+   local BARS_SCREW_SIZE = 3 -- small enough to stay inside the corner's curve
+   -- the Dial's square case has room to spare in its corners
+   local DIAL_CASE_RADIUS = 14
+   local DIAL_SCREW_SIZE = 5
+   local DIAL_SCREW_INSET = 11 -- from the case's edges to a screw hole's center
+   local DIAL_WINDOW_RADIUS = SIZE / 2 - CASE_MARGIN -- the bezel's outside edge
+   local DIAL_FACE_RADIUS = DIAL_WINDOW_RADIUS - BEZEL_WIDTH
+   -- round masks (anti-aliased): a circle, and its reverse, a round hole (made for this, as the game has none)
+   local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+   local HOLE_MASK = "Interface\\AddOns\\" .. addonFolder .. "\\Modules\\Compass\\CircleInverse"
+   -- the numerals' cream, for the in-between letters & the degrees, and the amber of the main directions
+   local CREAM = { 0.93, 0.9, 0.82, 1 }
+   local AMBER = { 0.91, 0.71, 0.23, 1 }
+
+   -- cuts `texture` down by a mask of `file` (outside the mask, the texture shows), placed by `Place(mask)`
+   local function AddMask(texture, file, Place)
+      local mask = frame:CreateMaskTexture()
+      mask:SetTexture(file, "CLAMPTOWHITE", "CLAMPTOWHITE")
+      Place(mask)
+      texture:AddMaskTexture(mask)
+      return mask
+   end
+
+   -- a plain texture on `frame` between two of its points, each given as { point, x, y }
+   local function Piece(list, layer, topLeft, bottomRight)
+      local piece = frame:CreateTexture(nil, layer)
+      piece:SetPoint("TOPLEFT", frame, unpack(topLeft))
+      piece:SetPoint("BOTTOMRIGHT", frame, unpack(bottomRight))
+      table.insert(list, piece)
+      return piece
+   end
+
+   -- a quarter circle of `radius` in each of the frame's corners (cut out by the round mask), and a round screw
+   -- hole of `screwSize`, `screwInset` in from the corner's edges
+   local function AddCorners(skin, radius, screwSize, screwInset)
+      for _, point in ipairs({ "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }) do
+         local corner = frame:CreateTexture(nil, "BACKGROUND")
+         corner:SetSize(radius, radius)
+         corner:SetPoint(point, frame, point)
+         AddMask(corner, CIRCLE_MASK, function(mask)
+            mask:SetSize(radius * 2, radius * 2)
+            mask:SetPoint(point, frame, point)
+         end)
+         table.insert(skin.case, corner)
+
+         local screw = frame:CreateTexture(nil, "BORDER")
+         screw:SetSize(screwSize, screwSize)
+         local x = point:find("LEFT") and screwInset or -screwInset
+         local y = point:find("TOP") and -screwInset or screwInset
+         screw:SetPoint("CENTER", frame, point, x, y)
+         AddMask(screw, CIRCLE_MASK, function(mask)
+            mask:SetAllPoints(screw)
+         end)
+         table.insert(skin.screws, screw)
+      end
+   end
+
+   -- The Bars' skin: the case is a band along each edge between its corners, around a rectangular window
+   local barsSkin = { case = {}, screws = {}, bezel = {} }
+   do
+      local m, w = CASE_MARGIN, BEZEL_WIDTH
+      AddCorners(barsSkin, m, BARS_SCREW_SIZE, m / 2) -- each screw centered in its corner's curve
+
+      local case = barsSkin.case
+      Piece(case, "BACKGROUND", { "TOPLEFT", m, 0 }, { "TOPRIGHT", -m, -m }) -- top
+      Piece(case, "BACKGROUND", { "BOTTOMLEFT", m, m }, { "BOTTOMRIGHT", -m, 0 }) -- bottom
+      Piece(case, "BACKGROUND", { "TOPLEFT", 0, -m }, { "BOTTOMLEFT", m, m }) -- left
+      Piece(case, "BACKGROUND", { "TOPRIGHT", -m, -m }, { "BOTTOMRIGHT", 0, m }) -- right
+
+      -- the bezel: a thin line around the inside of the case
+      local bezel = barsSkin.bezel
+      Piece(bezel, "BACKGROUND", { "TOPLEFT", m, -m }, { "TOPRIGHT", -m, -m - w }) -- top
+      Piece(bezel, "BACKGROUND", { "BOTTOMLEFT", m, m + w }, { "BOTTOMRIGHT", -m, m }) -- bottom
+      Piece(bezel, "BACKGROUND", { "TOPLEFT", m, -m - w }, { "BOTTOMLEFT", m + w, m + w }) -- left
+      Piece(bezel, "BACKGROUND", { "TOPRIGHT", -m - w, -m - w }, { "BOTTOMRIGHT", -m, m + w }) -- right
+
+      barsSkin.face = Piece({}, "BACKGROUND", { "TOPLEFT", m + w, -m - w }, { "BOTTOMRIGHT", -m - w, m + w })
+   end
+
+   -- The Dial's skin: the case is a rounded square with a round hole for the window, the bezel a ring around the
+   -- hole's edge, and the face a circle inside it
+   local dialSkin = { case = {}, screws = {}, bezel = {} }
+   do
+      local r = DIAL_CASE_RADIUS
+      AddCorners(dialSkin, r, DIAL_SCREW_SIZE, DIAL_SCREW_INSET)
+
+      -- the middle & the strips beside it, between the corners, all with the window's hole cut out of them
+      local case = dialSkin.case
+      local strips = {
+         Piece(case, "BACKGROUND", { "TOPLEFT", r, 0 }, { "BOTTOMRIGHT", -r, 0 }), -- middle
+         Piece(case, "BACKGROUND", { "TOPLEFT", 0, -r }, { "BOTTOMLEFT", r, r }), -- left
+         Piece(case, "BACKGROUND", { "TOPRIGHT", -r, -r }, { "BOTTOMRIGHT", 0, r }), -- right
+      }
+      for _, strip in ipairs(strips) do
+         AddMask(strip, HOLE_MASK, function(mask)
+            mask:SetSize(DIAL_WINDOW_RADIUS * 2, DIAL_WINDOW_RADIUS * 2)
+            mask:SetPoint("CENTER", frame)
+         end)
+      end
+
+      -- the bezel: a circle the window's size, with a hole the face's size
+      local bezel = frame:CreateTexture(nil, "BACKGROUND")
+      bezel:SetSize(DIAL_WINDOW_RADIUS * 2, DIAL_WINDOW_RADIUS * 2)
+      bezel:SetPoint("CENTER", frame)
+      AddMask(bezel, CIRCLE_MASK, function(mask)
+         mask:SetAllPoints(bezel)
+      end)
+      AddMask(bezel, HOLE_MASK, function(mask)
+         mask:SetSize(DIAL_FACE_RADIUS * 2, DIAL_FACE_RADIUS * 2)
+         mask:SetPoint("CENTER", frame)
+      end)
+      table.insert(dialSkin.bezel, bezel)
+
+      local face = frame:CreateTexture(nil, "BACKGROUND")
+      face:SetSize(DIAL_FACE_RADIUS * 2, DIAL_FACE_RADIUS * 2)
+      face:SetPoint("CENTER", frame)
+      AddMask(face, CIRCLE_MASK, function(mask)
+         mask:SetAllPoints(face)
+      end)
+      dialSkin.face = face
+   end
+
+   local function SetSkinShown(skin, shown)
+      for _, list in ipairs({ skin.case, skin.screws, skin.bezel }) do
+         for _, piece in ipairs(list) do
+            piece:SetShown(shown)
+         end
+      end
+      skin.face:SetShown(shown)
+   end
+
+   -- the face is the background, and the case, screw holes & bezel are the border
    local function ApplyColor()
       local backgroundAlpha = db.hideBackground and 0 or db.color.a
       local borderAlpha = db.hideBorder and 0 or math.min(1, db.color.a + 0.3) -- keeps the edge readable
-      frame:SetBackdropColor(db.color.r, db.color.g, db.color.b, backgroundAlpha)
-      frame:SetBackdropBorderColor(1, 1, 1, borderAlpha)
+      for _, skin in ipairs({ barsSkin, dialSkin }) do
+         skin.face:SetColorTexture(db.color.r, db.color.g, db.color.b, backgroundAlpha)
+         for _, piece in ipairs(skin.case) do
+            piece:SetColorTexture(CASE_COLOR[1], CASE_COLOR[2], CASE_COLOR[3], borderAlpha)
+         end
+         for _, piece in ipairs(skin.screws) do
+            piece:SetColorTexture(SCREW_COLOR[1], SCREW_COLOR[2], SCREW_COLOR[3], borderAlpha)
+         end
+         for _, piece in ipairs(skin.bezel) do
+            piece:SetColorTexture(BEZEL_COLOR[1], BEZEL_COLOR[2], BEZEL_COLOR[3], borderAlpha)
+         end
+      end
    end
-
-   ApplyColor()
 
    --## Position ---------------------------------------------------------------
    -- Saved as the frame's center offset from the screen's center, in screen (UIParent) units
    -- whatever the scale is, so the Positioning tab's X/Y offsets always mean the same thing.
    local function ApplyPosition()
+      if IsMinimapOverlay() then
+         return -- it's pinned to the minimap
+      end
       frame:ClearAllPoints()
       -- anchor offsets are in the frame's own (scaled) units
       frame:SetPoint("CENTER", UIParent, "CENTER", db.x / db.scale, db.y / db.scale)
@@ -169,26 +339,43 @@ UWU:AddModuleChunk("Compass", function()
    end)
    frame:SetScript("OnLeave", GameTooltip_Hide)
 
-   -- the heading marker: fixed at the center, pointing "forward" (up) while the ring turns around it
+   -- the heading marker: fixed at the center, pointing "forward" (up) while the ring turns around it. It's turned
+   -- from the game's gold to the numerals' cream.
    local arrow = frame:CreateTexture(nil, "ARTWORK")
    arrow:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
+   arrow:SetDesaturated(true)
+   arrow:SetVertexColor(unpack(CREAM))
 
    -- the heading in degrees, below the arrow
    local degrees = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-   degrees:SetTextColor(1, 1, 1, 1)
+
+   -- The letters & degrees are in a plain sans-serif, like an instrument's numerals (the standard font is the
+   -- fallback), a little bigger than their font objects' since it runs small
+   local INSTRUMENT_FONT = "Fonts\\ARIALN.TTF"
+   local INSTRUMENT_FONT_GROWTH = 1.2
+   local OVERLAY_LABEL_SHRINK = 2 -- points smaller, for the letters over the minimap
+
+   degrees.baseFont = { degrees:GetFont() }
+   degrees.color = CREAM
 
    local ringLabels = {}
    for i, heading in ipairs(HEADINGS) do
       local fontObject = heading.major and "GameFontNormalLarge" or "GameFontNormalSmall"
       local label = frame:CreateFontString(nil, "OVERLAY", fontObject)
       label:SetText(heading.label)
-      local color = DIRECTION_COLORS[heading.label]
-      if color then
-         label:SetTextColor(unpack(color))
-      elseif not heading.major then
-         label:SetTextColor(0.8, 0.8, 0.8, 1)
-      end
+      label.baseFont = { label:GetFont() }
+      label.color = heading.major and AMBER or CREAM -- the main directions are amber, the in-between ones cream
       ringLabels[i] = label
+   end
+
+   -- sets a label's (or the degrees') font & color, `shrink` points smaller than usual (if given)
+   local function StyleText(fontString, outline, shrink)
+      local file, size = unpack(fontString.baseFont)
+      shrink = shrink or 0
+      if not fontString:SetFont(INSTRUMENT_FONT, size * INSTRUMENT_FONT_GROWTH - shrink, outline) then
+         fontString:SetFont(file, size - shrink, outline)
+      end
+      fontString:SetTextColor(unpack(fontString.color))
    end
 
    -- Bars style: a strip of vertical bars (one every BAR_STEP degrees) that slides sideways as you turn.
@@ -210,31 +397,61 @@ UWU:AddModuleChunk("Compass", function()
       return { height = BARS_SIZE.height, labelY = 24, bottomY = -10, degreesY = -24 }
    end
 
-   -- smaller lines between the bars, to mark the in-between degrees
+   -- dots between the bars, to mark the in-between degrees (like the instrument's smallest marks). They sit on the
+   -- line the bars stand on.
    local TICK_STEP = 5
-   local TICK_HEIGHT = 8
+   local DOT_SIZE = 4
 
    local bars = {}
    for bearing = 0, 360 - TICK_STEP, TICK_STEP do
       local isBar = bearing % BAR_STEP == 0
       local isMajor = bearing % 45 == 0 -- the 8 labeled directions get taller, thicker bars
+      -- crisp, solid white strokes like an instrument's tick marks
       local bar = frame:CreateTexture(nil, "ARTWORK")
       bar:SetColorTexture(1, 1, 1, 1)
       if isMajor then
-         bar:SetSize(2, 24)
-         -- matches its letter's color
-         for _, heading in ipairs(HEADINGS) do
-            if heading.bearing == bearing then
-               bar:SetColorTexture(unpack(DIRECTION_COLORS[heading.label] or { 0.8, 0.8, 0.8, 1 }))
-            end
-         end
+         bar:SetSize(3, 24)
       elseif isBar then
-         bar:SetSize(1, 14)
+         bar:SetSize(2, 14)
       else
-         bar:SetSize(1, TICK_HEIGHT)
-         bar:SetColorTexture(0.6, 0.6, 0.6, 1) -- the smallest lines are gray
+         bar:SetSize(DOT_SIZE, DOT_SIZE)
+         bar:SetColorTexture(0.6, 0.6, 0.6, 1) -- the dots are gray
+         local mask = frame:CreateMaskTexture()
+         mask:SetTexture(CIRCLE_MASK)
+         mask:SetAllPoints(bar)
+         bar:AddMaskTexture(mask)
       end
       table.insert(bars, { texture = bar, bearing = bearing })
+   end
+
+   -- The Dial's tick marks, the same as the Bars' (white lines, the 8 labeled directions' longest & thickest, and
+   -- grey dots between), pointing in from the edge of the face & turning with the letters. On the minimap, the
+   -- face is the minimap, so the ticks & letters keep the same distances in from its edge.
+   local DIAL_TICK_INSET = 2 -- from the face's edge to where the ticks start
+   local DIAL_LABEL_INSET = DIAL_FACE_RADIUS - RING_RADIUS -- from the face's edge to the letters' centers
+   local DIAL_MAJOR_TICK_LENGTH = 9
+   local DIAL_TICK_LENGTH = 5
+
+   local dialTicks = {}
+   for bearing = 0, 360 - TICK_STEP, TICK_STEP do
+      local tick = frame:CreateTexture(nil, "ARTWORK")
+      tick:SetColorTexture(1, 1, 1, 1)
+      local length
+      if bearing % 45 == 0 then
+         length = DIAL_MAJOR_TICK_LENGTH
+         tick:SetSize(3, length)
+      elseif bearing % BAR_STEP == 0 then
+         length = DIAL_TICK_LENGTH
+         tick:SetSize(2, length)
+      else
+         length = DOT_SIZE
+         tick:SetSize(DOT_SIZE, DOT_SIZE)
+         tick:SetColorTexture(0.6, 0.6, 0.6, 1)
+         AddMask(tick, CIRCLE_MASK, function(mask)
+            mask:SetAllPoints(tick)
+         end)
+      end
+      table.insert(dialTicks, { texture = tick, bearing = bearing, length = length })
    end
 
    -- 1 in the middle of the strip, fading to 0 at its edges
@@ -270,11 +487,30 @@ UWU:AddModuleChunk("Compass", function()
    end
 
    local function UpdateDial(facing)
+      local faceRadius = DIAL_FACE_RADIUS
+      if IsMinimapOverlay() then
+         faceRadius = frame:GetWidth() / 2 -- the minimap's
+         -- a north-up minimap keeps north at the top, and its arrow points at our heading on the ring instead
+         if not IsMinimapRotating() then
+            facing = 0
+         end
+      end
+
       -- each label sits at (its bearing - our heading) clockwise from the top of the ring
+      local labelRadius = faceRadius - DIAL_LABEL_INSET
       for i, heading in ipairs(HEADINGS) do
          local angle = math.rad(heading.bearing) + facing
          ringLabels[i]:ClearAllPoints()
-         ringLabels[i]:SetPoint("CENTER", frame, "CENTER", RING_RADIUS * math.sin(angle), RING_RADIUS * math.cos(angle))
+         ringLabels[i]:SetPoint("CENTER", frame, "CENTER", labelRadius * math.sin(angle), labelRadius * math.cos(angle))
+      end
+
+      -- and so does each tick, turned to point at the center (a texture turns counter-clockwise)
+      for _, tick in ipairs(dialTicks) do
+         local angle = math.rad(tick.bearing) + facing
+         local radius = faceRadius - DIAL_TICK_INSET - tick.length / 2 -- its center's distance from the dial's
+         tick.texture:ClearAllPoints()
+         tick.texture:SetPoint("CENTER", frame, "CENTER", radius * math.sin(angle), radius * math.cos(angle))
+         tick.texture:SetRotation(-angle)
       end
    end
 
@@ -300,27 +536,62 @@ UWU:AddModuleChunk("Compass", function()
       degrees:SetText(string.format("%03d°", math.floor(heading + 0.5) % 360))
    end
 
+   -- Puts the compass in its own frame on the screen, or (as a Minimap Overlay) over the minimap, its size. There
+   -- it doesn't take the mouse, so the map can still be clicked, and it can't be moved or scaled on its own.
+   local function ApplyHost(overlay)
+      frame:ClearAllPoints()
+      frame:EnableMouse(not overlay)
+      frame:SetClampedToScreen(not overlay) -- the letters may stick out past a minimap at the screen's edge
+      if overlay then
+         frame:SetParent(Minimap)
+         frame:SetFrameStrata(Minimap:GetFrameStrata())
+         frame:SetFrameLevel(Minimap:GetFrameLevel() + 5)
+         frame:SetScale(1)
+         frame:SetAllPoints(Minimap)
+      else
+         frame:SetParent(UIParent)
+         frame:SetFrameStrata("MEDIUM")
+         frame:SetScale(db.scale)
+         ApplyPosition()
+      end
+   end
+
    -- lays out the HUD for the chosen style
    local function ApplyStyle()
       local isBars = db.style == "bars"
+      local overlay = IsMinimapOverlay()
+      ApplyHost(overlay)
 
       for _, bar in ipairs(bars) do
          bar.texture:SetShown(isBars)
       end
+      for _, tick in ipairs(dialTicks) do
+         tick.texture:SetShown(not isBars)
+      end
 
       for _, label in ipairs(ringLabels) do
          label:SetAlpha(1)
-         -- the game has no bold font, so a thick outline gives the Bars' letters their weight
-         local fontFile, fontSize = label:GetFont()
-         label:SetFont(fontFile, fontSize, isBars and "THICKOUTLINE" or "")
+         -- the game has no bold font, so a thick outline gives the letters their weight. Over the minimap, they're
+         -- a little smaller, to cover less of the map.
+         StyleText(label, "THICKOUTLINE", overlay and OVERLAY_LABEL_SHRINK or 0)
       end
+      StyleText(degrees, overlay and "OUTLINE" or "") -- the outline keeps it readable over the world
 
-      arrow:SetShown(not isBars) -- the strip's center bar position already marks the heading
+      -- over the minimap, there's no case or face, and the minimap's own arrow marks us
+      SetSkinShown(barsSkin, isBars)
+      SetSkinShown(dialSkin, not isBars and not overlay)
+      ApplyColor()
+
+      arrow:SetShown(not isBars and not overlay) -- the strip's center bar position already marks the heading
       arrow:ClearAllPoints()
       degrees:ClearAllPoints()
-      if isBars then
+      if overlay then
+         degrees:SetShown(true)
+         degrees:SetPoint("TOP", frame, "BOTTOM", 0, -4) -- just below the minimap
+      elseif isBars then
          local layout = BarsLayout()
-         frame:SetSize(BARS_SIZE.width, layout.height)
+         -- the face is the strip's size, with the case & bezel around it
+         frame:SetSize(BARS_SIZE.width + INSTRUMENT_INSET * 2, layout.height + INSTRUMENT_INSET * 2)
          degrees:SetShown(not db.hideDegrees)
          if layout.degreesY then
             degrees:SetPoint("CENTER", frame, "CENTER", 0, db.invertBars and -layout.degreesY or layout.degreesY)
@@ -356,9 +627,23 @@ UWU:AddModuleChunk("Compass", function()
    -- a hidden frame still gets events, so it comes back when combat ends
    frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- entering combat
    frame:RegisterEvent("PLAYER_REGEN_ENABLED") -- leaving combat
+   frame:RegisterEvent("CVAR_UPDATE") -- Rotate Minimap being turned on or off
+   frame:RegisterEvent("PLAYER_LOGIN") -- to apply the Rotate Minimap checkbox, once every addon has loaded
    frame:SetScript("OnEvent", function(_, event)
+      if event == "CVAR_UPDATE" then
+         lastFacing = nil -- redraw, in case the minimap's rotation changed
+         return
+      elseif event == "PLAYER_LOGIN" then
+         ApplyMinimapRotation()
+         return
+      end
       inCombat = event == "PLAYER_REGEN_DISABLED"
       UpdateVisibility()
+   end)
+
+   -- the minimap being resized (in Edit Mode) resizes the overlay with it
+   frame:SetScript("OnSizeChanged", function()
+      lastFacing = nil
    end)
 
    local function SetShown(shown)
@@ -374,8 +659,10 @@ UWU:AddModuleChunk("Compass", function()
 
    local function SetScale(scale)
       db.scale = Clamp(scale, MIN_SCALE, MAX_SCALE)
-      frame:SetScale(db.scale)
-      ApplyPosition() -- keeps the same spot on screen
+      if not IsMinimapOverlay() then -- the overlay is always the minimap's size
+         frame:SetScale(db.scale)
+         ApplyPosition() -- keeps the same spot on screen
+      end
    end
 
    local function SetPosition(x, y)
@@ -538,6 +825,46 @@ UWU:AddModuleChunk("Compass", function()
                      ApplyStyle()
                   end,
                },
+               minimapOverlay = {
+                  order = 1.55,
+                  name = "As Minimap Overlay",
+                  desc = "Draw the Dial's tick marks & letters around the edge of the minimap, with your heading in "
+                     .. "degrees below it, instead of in its own frame. With Rotate Minimap on, they turn with the "
+                     .. "map; otherwise north stays at the top, and the minimap's arrow points at your heading.\n\n"
+                     .. "It's the minimap's size and stays on it, so the scale, background, border & position "
+                     .. "options don't apply.",
+                  type = "toggle",
+                  hidden = function()
+                     return db.style ~= "dial"
+                  end,
+                  get = function()
+                     return db.minimapOverlay
+                  end,
+                  set = function(_, value)
+                     db.minimapOverlay = value
+                     ApplyStyle()
+                  end,
+               },
+               rotateMinimap = {
+                  order = 1.56,
+                  name = "Rotate Minimap",
+                  desc = "Turn the minimap as you turn, so what's ahead of you is always at the top (the game's own "
+                     .. "Rotate Minimap setting, which it has no checkbox for and doesn't keep across reloads). It's "
+                     .. "saved here & applied each time you log in or reload.\n\nWith the Minimap Overlay on, its "
+                     .. "ring turns with the map.",
+                  type = "toggle",
+                  -- SexyMap has its own (see HasSexyMap)
+                  hidden = function()
+                     return db.style ~= "dial" or HasSexyMap()
+                  end,
+                  get = function()
+                     return IsMinimapRotating()
+                  end,
+                  set = function(_, value)
+                     db.rotateMinimap = value
+                     ApplyMinimapRotation()
+                  end,
+               },
                invertBars = {
                   order = 1.6,
                   name = "Invert",
@@ -649,6 +976,12 @@ UWU:AddModuleChunk("Compass", function()
       },
    }
 
+   -- the Minimap Overlay is the minimap's size & stays on it, with no frame of its own, so these don't apply to it
+   for _, key in ipairs({ "scale", "background", "hideBackground", "hideBorder", "backgroundReset" }) do
+      options.args.general.args[key].disabled = IsMinimapOverlay
+   end
+   positioningOptions.disabled = IsMinimapOverlay
+
    -- the Profiles tab (always last)
    options.args.profile = LibStub("AceDBOptions-3.0"):GetOptionsTable(database)
    options.args.profile.order = -2
@@ -658,10 +991,10 @@ UWU:AddModuleChunk("Compass", function()
       db = database.profile
       ValidateSettings()
       frame:SetScale(db.scale)
-      ApplyColor()
       ApplyPosition()
-      ApplyStyle()
+      ApplyStyle() -- colors it too
       UpdateVisibility()
+      ApplyMinimapRotation()
       LibStub("AceConfigRegistry-3.0"):NotifyChange(APP_NAME)
    end
 

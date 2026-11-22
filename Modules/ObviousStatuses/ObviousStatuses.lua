@@ -22,6 +22,11 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       TOOLTIP = "Tooltip",
    }
 
+   -- each state's background color until another is picked (#171717)
+   local DEFAULT_STATE_COLOR = { r = 0x17 / 255, g = 0x17 / 255, b = 0x17 / 255 }
+   -- the states that can each have their own color, in the order they're picked in
+   local STATE_ORDER = { "Roaming", "Fighting", "Dragon", "Steady", "Present", "Past" }
+
    local MIN_RANGE_SCALE, MAX_RANGE_SCALE = 0.5, 3
    local MIN_RANGE_CROSS_SCALE, MAX_RANGE_CROSS_SCALE = 0.5, 3
 
@@ -72,9 +77,16 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return names
    end
 
+   local MIN_FONT_SIZE, MAX_FONT_SIZE = 12, 40
+   local DEFAULT_FONT_SIZE = 22
+
    local DEFAULTS = {
       profile = {
          strata = DEFAULT_STRATA,
+         -- the statuses' text: a font's name in LibSharedMedia (the default is the game's standard font, Friz
+         -- Quadrata TT, or the client's own where Friz Quadrata can't write its language)
+         font = LSM:GetDefault("font"),
+         fontSize = DEFAULT_FONT_SIZE,
          enableCombat = true,
          enableFlight = true,
          enablePhase = true,
@@ -97,6 +109,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          flightY = 0,
          phaseX = 0,
          phaseY = 76,
+         stateColors = {}, -- each state's background, by state (filled in below)
          -- the range indicator (the Range tab)
          rangeSpell = "", -- the name of the spell whose range is checked (blank hides the indicator)
          rangeSound = "NONE", -- a key of RANGE_SOUNDS, or "lsm:<name>" for a shared sound
@@ -110,6 +123,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
          rangeHideInCombat = false,
       },
    }
+   for _, stateText in ipairs(STATE_ORDER) do
+      DEFAULTS.profile.stateColors[stateText] = CopyTable(DEFAULT_STATE_COLOR)
+   end
 
    local database = LibStub("AceDB-3.0"):New("ObviousStatusesDB", DEFAULTS, true)
    local db = database.profile
@@ -125,6 +141,11 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       if not STRATA[db.strata] then
          db.strata = DEFAULT_STRATA
       end
+      -- a font is kept even if its addon hasn't loaded yet (or is gone); the default stands in until it's registered
+      if type(db.font) ~= "string" or db.font == "" then
+         db.font = DEFAULTS.profile.font
+      end
+      db.fontSize = Clamp(math.floor((tonumber(db.fontSize) or DEFAULT_FONT_SIZE) + 0.5), MIN_FONT_SIZE, MAX_FONT_SIZE)
       db.enableCombat = db.enableCombat ~= false
       db.enableFlight = db.enableFlight ~= false
       db.enablePhase = db.enablePhase ~= false
@@ -135,6 +156,16 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       db.separateFrames = db.separateFrames == true
       for _, key in ipairs({ "combatX", "combatY", "flightX", "flightY", "phaseX", "phaseY" }) do
          db[key] = tonumber(db[key]) or DEFAULTS.profile[key]
+      end
+      local stateColors = type(db.stateColors) == "table" and db.stateColors or {}
+      db.stateColors = {}
+      for _, stateText in ipairs(STATE_ORDER) do
+         local color = type(stateColors[stateText]) == "table" and stateColors[stateText] or {}
+         db.stateColors[stateText] = {
+            r = Clamp(tonumber(color.r) or DEFAULT_STATE_COLOR.r, 0, 1),
+            g = Clamp(tonumber(color.g) or DEFAULT_STATE_COLOR.g, 0, 1),
+            b = Clamp(tonumber(color.b) or DEFAULT_STATE_COLOR.b, 0, 1),
+         }
       end
       db.hideIcons = db.hideIcons == true
       -- saved under its old name before "Dragonriding" became "Flight" (each profile moves over once it's used)
@@ -176,12 +207,24 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    --## ==========================================================================
    --## STATUSES
    --## ==========================================================================
-   local FONT_SIZE = 24
-   local PADDING = 12 -- around the text, inside each rectangle
+   -- The look follows Material UI's dark theme: each status is a pill-shaped chip with a round icon, on a
+   -- rounded, shadowed Paper (the background), spaced on an 8-unit grid.
+   local PADDING = 8 -- above & below the text, inside each rectangle
+   local PADDING_X = 18 -- left & right of the text, inside each rectangle (its rounded ends need the room)
    local SPACING = 8 -- between the rectangles
    local ICON_SPACING = 8 -- between a rectangle's icon and its text
    local ICON_GROWTH = 4 -- how much taller the icons are than the text
-   local BACKGROUND_PADDING = 10 -- between the rectangles and the edge of the background behind them
+   local BACKGROUND_PADDING = 8 -- between the rectangles and the edge of the background behind them
+   -- the background's color: Material's dark Paper at elevation 3 (#121212 under an 8% white overlay)
+   local PAPER_COLOR = { 0x25 / 255, 0x25 / 255, 0x25 / 255, 1 }
+   -- The background's drop shadow: layers of see-through black behind it, each one unit bigger than the last, so
+   -- it fades out from the edge. It's shifted down a little, as if lit from above.
+   local SHADOW_LAYERS = 5
+   local SHADOW_ALPHA = 0.06 -- of each layer (they add up toward the edge)
+   local SHADOW_OFFSET = 2 -- how far down it's shifted
+   -- a round mask (anti-aliased) that cuts the rounded corners & the round icons
+   local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+   local ROUND_ICON_COORDS = { 0.08, 0.92, 0.08, 0.92 } -- crops a square icon's border off before it's made round
    local SKYRIDING_AURA = "Flight Style: Skyriding"
    -- WoW Forever has no flying & no Zidormi, so only the combat status is shown there (and the options for the
    -- other two are hidden)
@@ -195,14 +238,14 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    --    [<uiMapID>] = { pastAura = <name or spell ID>, pastArtID = <art ID> },
    local PHASE_ZONES = {}
 
-   -- The icon for each state of the combat & phase rectangles. `coords` crops the texture, and `color` tints it
-   -- (a white texture takes the color well, so those are desaturated first). The flight rectangle uses the
-   -- Skyriding aura's own icon instead.
+   -- The icon for each state of the combat & phase rectangles. `coords` crops the texture, `color` tints it
+   -- (a white texture takes the color well, so those are desaturated first), and `round` crops a square icon's
+   -- border off and makes it round. The flight rectangle uses the Skyriding aura's own icon instead.
    local ICONS = {
       -- crossed swords, cropped to the swords (the texture has a lot of empty space around them)
       Fighting = { texture = "Interface\\CharacterFrame\\UI-StateIcon", coords = { 0.56, 0.92, 0.06, 0.43 } },
-      Roaming = { texture = 132540 }, -- a file ID
-      Past = { texture = "Interface\\Icons\\INV_Misc_PocketWatch_01" }, -- a pocket watch
+      Roaming = { texture = 132540, round = true }, -- a file ID
+      Past = { texture = "Interface\\Icons\\INV_Misc_PocketWatch_01", round = true }, -- a pocket watch
       Present = { -- a green arrow, a little bigger than the other icons
          texture = "Interface\\ChatFrame\\ChatFrameExpandArrow",
          desaturated = true,
@@ -213,34 +256,121 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local STEADY_AURA = "Flight Style: Steady"
    local FLIGHT_FALLBACK_ICON = "Interface\\Icons\\INV_Misc_QuestionMark" -- if no icon can be found at all
 
-   -- the background color, by the player's faction (Neutral is a Pandaren who hasn't picked a side yet)
-   local FACTION_COLORS = {
-      Alliance = { 0.05, 0.25, 0.65 },
-      Horde = { 0.65, 0.07, 0.07 },
-   }
-   local NEUTRAL_COLOR = { 0.3, 0.3, 0.3 }
-
    local frame = CreateFrame("Frame", "UWUObviousStatusesFrame", UIParent)
 
-   -- a rounded, bordered background to put rectangles on (like the Compass's)
-   local function CreateBackdropFrame(name, parent)
-      local backdropFrame = CreateFrame("Frame", name, parent, "BackdropTemplate")
-      backdropFrame:SetBackdrop({
-         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", -- rounded corners
-         tile = true,
-         tileSize = 16,
-         edgeSize = 16,
-         insets = { left = 4, right = 4, top = 4, bottom = 4 },
-      })
-      backdropFrame:SetBackdropColor(0, 0, 0, 0.5) -- semi-transparent black
-      backdropFrame:SetBackdropBorderColor(1, 1, 1, 0.8)
-      return backdropFrame
+   -- A rounded rectangle, drawn on `parent`'s `layer`. The game has no such shape, so it's pieced together from
+   -- plain textures: a cross of three rectangles, with a quarter circle (cut out by the round mask) in each
+   -- corner. None of the pieces overlap, so a see-through color stays even all over.
+   -- Snapping each piece to whole pixels on its own could leave a pixel's gap or notch where they meet, as
+   -- their sizes are often fractional
+   local function StopPixelSnapping(region)
+      if region.SetSnapToPixelGrid then
+         region:SetSnapToPixelGrid(false)
+         region:SetTexelSnappingBias(0)
+      end
+   end
+
+   local function CreateRoundedRect(parent, layer, subLevel)
+      local shape = { strips = {}, corners = {} }
+      for i = 1, 3 do -- the middle, then the left & right strips between the corners
+         shape.strips[i] = parent:CreateTexture(nil, layer, nil, subLevel)
+         StopPixelSnapping(shape.strips[i])
+      end
+      for i = 1, 4 do
+         local corner = parent:CreateTexture(nil, layer, nil, subLevel)
+         corner.mask = parent:CreateMaskTexture()
+         corner.mask:SetTexture(CIRCLE_MASK)
+         corner:AddMaskTexture(corner.mask)
+         StopPixelSnapping(corner)
+         StopPixelSnapping(corner.mask)
+         shape.corners[i] = corner
+      end
+
+      function shape.SetColor(r, g, b, a)
+         for _, strip in ipairs(shape.strips) do
+            strip:SetColorTexture(r, g, b, a)
+         end
+         for _, corner in ipairs(shape.corners) do
+            corner:SetColorTexture(r, g, b, a)
+         end
+      end
+
+      local function Apply(region, wantedRadius, grow, down)
+         local height = region:GetHeight()
+         -- up to half its height, which makes the ends fully round
+         local radius = math.min(wantedRadius, height / 2 + grow)
+         local left, right, top, bottom = -grow, grow, grow - down, -grow - down
+         local middle, leftStrip, rightStrip = unpack(shape.strips)
+
+         middle:ClearAllPoints()
+         middle:SetPoint("TOPLEFT", region, "TOPLEFT", left + radius, top)
+         middle:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", right - radius, bottom)
+
+         -- with fully round ends, the strips between the corners have no height left
+         local hasStrips = radius < height / 2 + grow - 0.01
+         leftStrip:ClearAllPoints()
+         leftStrip:SetPoint("TOPLEFT", region, "TOPLEFT", left, top - radius)
+         leftStrip:SetPoint("BOTTOMRIGHT", region, "BOTTOMLEFT", left + radius, bottom + radius)
+         leftStrip:SetShown(hasStrips)
+         rightStrip:ClearAllPoints()
+         rightStrip:SetPoint("TOPLEFT", region, "TOPRIGHT", right - radius, top - radius)
+         rightStrip:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", right, bottom + radius)
+         rightStrip:SetShown(hasStrips)
+
+         -- each corner shows one quarter of a circle the size of two corners
+         local spots = {
+            { "TOPLEFT", left, top },
+            { "TOPRIGHT", right, top },
+            { "BOTTOMLEFT", left, bottom },
+            { "BOTTOMRIGHT", right, bottom },
+         }
+         for i, corner in ipairs(shape.corners) do
+            local point, x, y = unpack(spots[i])
+            corner:ClearAllPoints()
+            corner:SetPoint(point, region, point, x, y)
+            corner:SetSize(radius, radius)
+            corner.mask:ClearAllPoints()
+            corner.mask:SetPoint(point, region, point, x, y)
+            corner.mask:SetSize(radius * 2, radius * 2)
+         end
+      end
+
+      -- Covers `region`, grown by `grow` on every side and shifted down by `down`, with corners of `radius`. It's
+      -- anchored to `region`, and redone whenever the region is resized (its height decides whether the ends
+      -- are fully round).
+      function shape.Layout(region, radius, grow, down)
+         grow, down = grow or 0, down or 0
+         shape.region, shape.radius, shape.grow, shape.down = region, radius, grow, down
+         if not shape.hooked then
+            shape.hooked = true
+            region:HookScript("OnSizeChanged", function()
+               Apply(shape.region, shape.radius, shape.grow, shape.down)
+            end)
+         end
+         Apply(region, radius, grow, down)
+      end
+
+      return shape
+   end
+
+   -- A Material Paper to put rectangles on: an opaque, rounded background with a soft drop shadow. It's laid out
+   -- by LayoutPaper, once the rectangles' height is known.
+   local function CreatePaperFrame(name, parent)
+      local paperFrame = CreateFrame("Frame", name, parent)
+      paperFrame.shadowLayers = {}
+      for i = 1, SHADOW_LAYERS do
+         local layer = CreateRoundedRect(paperFrame, "BACKGROUND", -8)
+         layer.SetColor(0, 0, 0, SHADOW_ALPHA)
+         paperFrame.shadowLayers[i] = layer
+      end
+      paperFrame.paper = CreateRoundedRect(paperFrame, "BACKGROUND", 0)
+      paperFrame.paper.SetColor(unpack(PAPER_COLOR))
+      return paperFrame
    end
 
    -- The background behind the stacked rectangles. It's only as tall as the rectangles that are showing; the
    -- frame it sits in keeps the whole stack's size.
-   local background = CreateBackdropFrame(nil, frame)
+   local background = CreatePaperFrame(nil, frame)
 
    -- Each status's own frame, used instead of the stack while "Separate" is on. The rectangles move
    -- between the two, and the stack's `frame` stays around for the events.
@@ -248,7 +378,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local STATUS_TITLES = { combat = "Combat", flight = "Flight", phase = "Phase" }
    local separateFrames = {}
    for i, key in ipairs(STATUS_ORDER) do
-      separateFrames[i] = CreateBackdropFrame("UWUObviousStatuses" .. STATUS_TITLES[key] .. "Frame", UIParent)
+      separateFrames[i] = CreatePaperFrame("UWUObviousStatuses" .. STATUS_TITLES[key] .. "Frame", UIParent)
    end
 
    local function ApplyStatusesStrata()
@@ -267,25 +397,18 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local function CreateRectangle(texts)
       local rectangle = CreateFrame("Frame", nil, background)
-      rectangle.background = rectangle:CreateTexture(nil, "BACKGROUND")
-      rectangle.background:SetAllPoints()
+      rectangle.background = CreateRoundedRect(rectangle, "BACKGROUND", 0) -- laid out once its height is known
 
       rectangle.icon = rectangle:CreateTexture(nil, "ARTWORK")
+      rectangle.iconMask = rectangle:CreateMaskTexture() -- for round icons
+      rectangle.iconMask:SetTexture(CIRCLE_MASK)
+      rectangle.iconMask:SetAllPoints(rectangle.icon)
 
       local label = rectangle:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-      label:SetFont(STANDARD_TEXT_FONT, FONT_SIZE, "")
       label:SetTextColor(1, 1, 1, 1)
       label:SetJustifyH("LEFT")
       rectangle.label = label
-
-      -- the widest this rectangle's text can be
-      local width = 0
-      for _, text in ipairs(texts) do
-         label:SetText(text)
-         width = math.max(width, label:GetStringWidth())
-      end
-      rectangle.textWidth = width
-      rectangle.textHeight = label:GetStringHeight()
+      rectangle.texts = texts -- every text it can show, to measure (see ApplyFont)
       return rectangle
    end
 
@@ -295,16 +418,48 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local phase = CreateRectangle({ "Past", "Present" })
    local rectangles = { combat, flight, phase }
 
-   -- every rectangle is as wide as the widest text of any of them, so a status changing never changes the size
-   local maxTextWidth, textHeight, iconSize = 0, 0, 0
-   for _, rectangle in ipairs(rectangles) do
-      maxTextWidth = math.max(maxTextWidth, rectangle.textWidth)
-      textHeight = math.max(textHeight, rectangle.textHeight)
+   -- the sizes that follow from the font (see ApplyFont), and the rectangles' width (see ApplySize)
+   local maxTextWidth, textHeight, iconSize, rectangleHeight, backgroundRadius = 0, 0, 0, 0, 0
+   local rectangleWidth
+
+   local function LayoutPaper(paperFrame)
+      paperFrame.paper.Layout(paperFrame, backgroundRadius)
+      for i, layer in ipairs(paperFrame.shadowLayers) do
+         layer.Layout(paperFrame, backgroundRadius + i, i, SHADOW_OFFSET)
+      end
    end
 
-   iconSize = textHeight + ICON_GROWTH
-   local rectangleHeight = textHeight + PADDING * 2
-   local rectangleWidth
+   -- Sets the text's font & size (from the States tab), then measures it: every rectangle is as wide as the widest
+   -- text of any of them, so a status changing never changes the size. The rectangles' height, and so how round
+   -- everything is, follows from the text's.
+   local function ApplyFont()
+      maxTextWidth, textHeight = 0, 0
+      for _, rectangle in ipairs(rectangles) do
+         local label = rectangle.label
+         label:SetFont(LSM:Fetch("font", db.font), db.fontSize, "")
+         for _, text in ipairs(rectangle.texts) do
+            label:SetText(text)
+            maxTextWidth = math.max(maxTextWidth, label:GetStringWidth())
+            textHeight = math.max(textHeight, label:GetStringHeight())
+         end
+      end
+
+      iconSize = textHeight + ICON_GROWTH
+      rectangleHeight = textHeight + PADDING * 2
+
+      -- The rectangles are pills (their ends fully round), and each background's corners curve around them,
+      -- the same distance away all the way round.
+      backgroundRadius = rectangleHeight / 2 + BACKGROUND_PADDING
+      for _, rectangle in ipairs(rectangles) do
+         rectangle.background.Layout(rectangle, rectangleHeight / 2)
+      end
+      LayoutPaper(background)
+      for _, separateFrame in ipairs(separateFrames) do
+         LayoutPaper(separateFrame)
+      end
+   end
+
+   ApplyFont()
 
    -- The size of the background behind `count` rectangles, stacked vertically or (if horizontal) side by side.
    -- The frame is always the size of the whole stack, so a rectangle hiding never moves the rest of the stack's
@@ -317,20 +472,21 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return rectangleWidth + BACKGROUND_PADDING * 2, rectangleHeight * count + gaps + BACKGROUND_PADDING * 2
    end
 
-   -- Left to right: padding, icon (a little taller than the text), spacing, text (left-aligned), padding.
-   -- An icon that's bigger than that grows around its center, so the text stays put. Without icons, the
-   -- rectangles are just the text & its padding.
+   -- Left to right: icon (a little taller than the text, centered in the rounded left end, like a Material
+   -- chip's), spacing, text (left-aligned), padding. An icon that's bigger than that grows around its center,
+   -- so the text stays put. Without icons, the rectangles are just the text & its padding.
    local function ApplySize()
-      local textLeft = PADDING
+      local iconCenter = rectangleHeight / 2
+      local textLeft = PADDING_X
       if not db.hideIcons then
-         textLeft = PADDING + iconSize + ICON_SPACING
+         textLeft = iconCenter + iconSize / 2 + ICON_SPACING
       end
 
-      rectangleWidth = textLeft + maxTextWidth + PADDING
+      rectangleWidth = textLeft + maxTextWidth + PADDING_X
       for _, rectangle in ipairs(rectangles) do
          rectangle:SetSize(rectangleWidth, rectangleHeight)
          rectangle.icon:ClearAllPoints()
-         rectangle.icon:SetPoint("CENTER", rectangle, "LEFT", PADDING + iconSize / 2, 0)
+         rectangle.icon:SetPoint("CENTER", rectangle, "LEFT", iconCenter, 0)
          rectangle.label:ClearAllPoints()
          rectangle.label:SetPoint("LEFT", textLeft, 0)
       end
@@ -348,13 +504,6 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    -- "Hide When Map Is Open" hides everything, the range indicator too
    local function IsHiddenByMap()
       return db.hideWithMap and state.mapOpen
-   end
-
-   local function ApplyColor()
-      local color = FACTION_COLORS[UnitFactionGroup("player")] or NEUTRAL_COLOR
-      for _, rectangle in ipairs(rectangles) do
-         rectangle.background:SetColorTexture(color[1], color[2], color[3], 1)
-      end
    end
 
    local function MoveRectangleTo(rectangle, parent)
@@ -415,8 +564,17 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    end
 
    local function SetIcon(rectangle, icon)
-      local coords = icon.coords or { 0, 1, 0, 1 }
+      local round = icon.round == true
+      local coords = icon.coords or (round and ROUND_ICON_COORDS) or { 0, 1, 0, 1 }
       local color = icon.color or { 1, 1, 1 }
+      if round ~= rectangle.isIconRound then
+         rectangle.isIconRound = round
+         if round then
+            rectangle.icon:AddMaskTexture(rectangle.iconMask)
+         else
+            rectangle.icon:RemoveMaskTexture(rectangle.iconMask)
+         end
+      end
       local size = iconSize + (icon.extraSize or 0)
       rectangle.icon:SetSize(size, size)
       rectangle.icon:SetShown(not db.hideIcons)
@@ -426,19 +584,29 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       rectangle.icon:SetVertexColor(color[1], color[2], color[3])
    end
 
+   -- each state has its own background color, picked on the States tab
+   local function SetBackgroundColor(rectangle, stateText)
+      local color = db.stateColors[stateText]
+      rectangle.background.SetColor(color.r, color.g, color.b, 1)
+   end
+
    local function Refresh()
       ApplySize() -- the icons being hidden changes the width
 
       local combatText = state.inCombat and "Fighting" or "Roaming"
       local phaseText = state.phase or "Present"
+      local flightText = state.skyriding and "Dragon" or "Steady"
       combat.label:SetText(combatText)
       SetIcon(combat, ICONS[combatText])
+      SetBackgroundColor(combat, combatText)
       phase.label:SetText(phaseText)
       SetIcon(phase, ICONS[phaseText])
+      SetBackgroundColor(phase, phaseText)
 
       -- the Skyriding aura's icon, at full strength whether or not it's on
-      flight.label:SetText(state.skyriding and "Dragon" or "Steady")
-      SetIcon(flight, { texture = state.flightIcon or FLIGHT_FALLBACK_ICON })
+      flight.label:SetText(flightText)
+      SetIcon(flight, { texture = state.flightIcon or FLIGHT_FALLBACK_ICON, round = true })
+      SetBackgroundColor(flight, flightText)
 
       local shown = not IsHiddenByMap()
       Layout({
@@ -531,16 +699,20 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       elseif event == "PLAYER_REGEN_ENABLED" then
          state.inCombat = false
          Refresh()
-      elseif event == "PLAYER_ENTERING_WORLD" then
-         ApplyColor() -- the faction can change (a Pandaren picking a side)
-         UpdateAll()
       else
          UpdateAll()
       end
    end)
 
-   ApplyColor()
    UpdateAll()
+
+   -- a font from another addon may only get registered after we've loaded
+   LSM.RegisterCallback(frame, "LibSharedMedia_Registered", function(_, mediaType, name)
+      if mediaType == "font" and name == db.font then
+         ApplyFont()
+         Refresh()
+      end
+   end)
 
    --## Position ---------------------------------------------------------------
    -- Where a movable frame sits. It's saved as the frame's center offset from the screen's center, in screen
@@ -783,7 +955,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local lastInRange -- the last check's result, to tell when the same target comes into range
 
-   local function RefreshRange()
+   -- The sound plays when the target comes into range, and when a target is selected that's already in range
+   -- (`isNewTarget`). It's silent while the indicator is hidden.
+   local function RefreshRange(isNewTarget)
       local spell = GetRangeSpell()
       if not spell then
          lastInRange = nil
@@ -792,7 +966,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
 
       local inRange = IsTargetInRange(spell.spellID)
-      if inRange and lastInRange == false then
+      if inRange and (lastInRange == false or isNewTarget) and rangeFrame:IsShown() then
          PlayRangeSound(db.rangeSound)
       end
       lastInRange = inRange
@@ -826,7 +1000,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
    end)
 
-   -- a new target shows straight away, instead of on the next check (and is silent if it's already in range)
+   -- a new target shows straight away, instead of on the next check (and the sound plays if it's already in range)
    rangeFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
    -- entering & leaving combat, for "Hide in Combat" (the statuses' frame sets the same state, in whichever order
    -- the two frames get the event)
@@ -840,7 +1014,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
 
       lastInRange = nil
-      RefreshRange()
+      RefreshRange(true)
    end)
 
    local rangePlacement = CreatePlacement(rangeFrame, "rangeX", "rangeY", "rangeScale")
@@ -953,18 +1127,37 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return { order = order, name = "", type = "description", width = "full" }
    end
 
-   -- Adds the X/Y offsets, nudge, centering & reset options for a placement to `args`, ordered from `order`.
-   -- `what` names the frame in descriptions, and `defaultSpot` where Reset Position puts it.
-   local function AddPositionOptions(args, placement, what, defaultSpot, order)
-      args.xOffset = OffsetInput(placement, what, "x", "X Offset", order)
-      args.yOffset = OffsetInput(placement, what, "y", "Y Offset", order + 1)
-      args.nudgeBreak = LineBreak(order + 9)
-      args.xMinus = NudgeButton(placement, "x", -1, order + 10)
-      args.xPlus = NudgeButton(placement, "x", 1, order + 11)
-      args.yMinus = NudgeButton(placement, "y", -1, order + 12)
-      args.yPlus = NudgeButton(placement, "y", 1, order + 13)
-      args.centerBreak = LineBreak(order + 19)
-      args.centerHorizontally = {
+   -- a regular Ace button with big, outlined text, so the nudge buttons' "+" & "-" are easy to read
+   local LARGE_TEXT_BUTTON_WIDGET = "UWU-LargeTextButton"
+
+   LibStub("AceGUI-3.0"):RegisterWidgetType(LARGE_TEXT_BUTTON_WIDGET, function()
+      local widget = LibStub("AceGUI-3.0").WidgetRegistry["Button"]()
+      widget.type = LARGE_TEXT_BUTTON_WIDGET -- pooled under our own type when released
+      widget.frame:SetNormalFontObject("GameFontNormalHugeOutline")
+      widget.frame:SetHighlightFontObject("GameFontHighlightHugeOutline")
+      return widget
+   end, 1)
+
+   -- Adds the X/Y offsets, nudge, centering & reset options for a placement to `args`, ordered from `order`, with
+   -- their keys starting with `prefix` (so several sets can share a tab). `what` names the frame in descriptions,
+   -- and `defaultSpot` where Reset Position puts it.
+   local function AddPositionOptions(args, prefix, placement, what, defaultSpot, order)
+      local function Add(key, option)
+         args[prefix .. key] = option
+         return option
+      end
+
+      Add("XOffset", OffsetInput(placement, what, "x", "X Offset", order))
+      Add("YOffset", OffsetInput(placement, what, "y", "Y Offset", order + 1))
+      Add("NudgeBreak", LineBreak(order + 9))
+      local nudges = {
+         Add("XMinus", NudgeButton(placement, "x", -1, order + 10)),
+         Add("XPlus", NudgeButton(placement, "x", 1, order + 11)),
+         Add("YMinus", NudgeButton(placement, "y", -1, order + 12)),
+         Add("YPlus", NudgeButton(placement, "y", 1, order + 13)),
+      }
+      Add("CenterBreak", LineBreak(order + 19))
+      local centerHorizontally = Add("CenterHorizontally", {
          order = order + 20,
          name = "Center Horizontally",
          type = "execute",
@@ -972,8 +1165,8 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             local _, y = placement.Get()
             placement.Set(0, y)
          end,
-      }
-      args.centerVertically = {
+      })
+      local centerVertically = Add("CenterVertically", {
          order = order + 21,
          name = "Center Vertically",
          type = "execute",
@@ -981,15 +1174,23 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             local x = placement.Get()
             placement.Set(x, 0)
          end,
-      }
-      args.resetBreak = LineBreak(order + 29)
-      args.resetPosition = {
+      })
+      Add("ResetBreak", LineBreak(order + 29))
+      Add("ResetPosition", {
          order = order + 30,
          name = "Reset Position",
          desc = "Move " .. what .. " back to " .. defaultSpot .. ".",
          type = "execute",
          func = placement.Reset,
-      }
+      })
+
+      for _, nudge in ipairs(nudges) do
+         nudge.dialogControl = LARGE_TEXT_BUTTON_WIDGET
+      end
+      -- these buttons' tooltips would only repeat their labels (any descStyle but "tooltip" turns Ace's off)
+      for _, button in ipairs({ centerHorizontally, centerVertically, unpack(nudges) }) do
+         button.descStyle = "none"
+      end
       return args
    end
 
@@ -1033,9 +1234,10 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return not IsSeparate()
    end
 
-   local statusBreak = LineBreak(3)
+   local statusBreak = LineBreak(4)
    statusBreak.hidden = HideWithoutSeparateFrames
 
+   -- the statuses' position options, then the range indicator's (added just below), each under a header
    local positioningOptions = {
       name = "Positioning",
       type = "group",
@@ -1043,13 +1245,18 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       args = AddPositionOptions({
          intro = {
             order = 1,
-            name = "Position the statuses precisely, relative to the center of the screen. "
-               .. "You can also hold Shift and drag them with the left mouse button.",
+            name = "Position the statuses and the range indicator precisely, relative to the center of the "
+               .. "screen. You can also hold Shift and drag them with the left mouse button.",
             type = "description",
             width = "full",
          },
-         status = {
+         statesHeader = {
             order = 2,
+            name = "States",
+            type = "header",
+         },
+         status = {
+            order = 3,
             name = "Status",
             desc = "Which status's frame these options move.",
             type = "select",
@@ -1064,8 +1271,21 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             end,
          },
          statusBreak = statusBreak,
-      }, positionedPlacement, "the statuses", "their default spot, around the center of the screen", 10),
+         rangeHeader = {
+            order = 50,
+            name = "Range",
+            type = "header",
+         },
+      }, "states", positionedPlacement, "the statuses", "their default spot, around the center of the screen", 10),
    }
+   AddPositionOptions(
+      positioningOptions.args,
+      "range",
+      rangePlacement,
+      "the range indicator",
+      "its default spot, just below the center of the screen",
+      60
+   )
 
    --## Range tab ---------------------------------------------------------------
    -- A regular Ace dropdown row with a speaker button on its right that samples the row's sound, without
@@ -1126,6 +1346,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local HALF_WIDTH_TOGGLE_WIDGET = "UWU-HalfWidth-CheckBox"
    local QUARTER_WIDTH_TOGGLE_WIDGET = "UWU-QuarterWidth-CheckBox"
    local THIRD_WIDTH_TOGGLE_WIDGET = "UWU-ThirdWidth-CheckBox"
+   local HALF_WIDTH_COLOR_WIDGET = "UWU-HalfWidth-ColorPicker"
 
    do
       local AceGUI = LibStub("AceGUI-3.0")
@@ -1149,6 +1370,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       RegisterRelativeWidthWidget(HALF_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.5)
       RegisterRelativeWidthWidget(QUARTER_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.25)
       RegisterRelativeWidthWidget(THIRD_WIDTH_TOGGLE_WIDGET, "CheckBox", 0.33) -- 3 exact thirds could round past the row
+      RegisterRelativeWidthWidget(HALF_WIDTH_COLOR_WIDGET, "ColorPicker", 0.5)
    end
 
    -- Empty space above a row of options. It's its own widget since Ace's rows have fixed gaps, and an empty
@@ -1176,13 +1398,13 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       name = "Range",
       type = "group",
       order = 2,
-      args = AddPositionOptions({
+      args = {
          intro = {
             order = 1,
             name = "Shows whether your target is in range of a spell: an open eye under a green tint when it is, "
                .. "and a closed eye under a red tint when it's too far away. With no target (or one the spell can't be cast on), it shows the "
                .. "spell's icon, greyed out. A red question mark means no spell by that name was found.\n\n"
-               .. "Hold Shift and drag it with the left mouse button to move it.\n ",
+               .. "Hold Shift and drag it with the left mouse button to move it, or use the Positioning tab.\n ",
             type = "description",
             width = "full",
          },
@@ -1221,7 +1443,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             order = 2.5,
             name = "Play Sound",
             desc = "A sound to play when your target comes into range, from the game or shared by your other "
-               .. "addons. It stays silent when you select a target that's already in range.",
+               .. "addons. It also plays when you select a target that's already in range.",
             type = "select",
             dialogControl = HALF_WIDTH_SELECT_WIDGET,
             itemControl = SOUND_ITEM_WIDGET,
@@ -1362,33 +1584,8 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                ApplyRangeCross()
             end,
          },
-         positionHeader = {
-            order = 5,
-            name = "Position",
-            type = "header",
-         },
-      }, rangePlacement, "the range indicator", "its default spot, just below the center of the screen", 10),
+      },
    }
-
-   -- these buttons' tooltips would only repeat their labels (any descStyle but "tooltip" turns Ace's off)
-   for _, key in ipairs({ "xMinus", "xPlus", "yMinus", "yPlus", "centerHorizontally", "centerVertically" }) do
-      rangeOptions.args[key].descStyle = "none"
-   end
-
-   -- a regular Ace button with big, outlined text, so the nudge buttons' "+" & "-" are easy to read
-   local LARGE_TEXT_BUTTON_WIDGET = "UWU-LargeTextButton"
-
-   LibStub("AceGUI-3.0"):RegisterWidgetType(LARGE_TEXT_BUTTON_WIDGET, function()
-      local widget = LibStub("AceGUI-3.0").WidgetRegistry["Button"]()
-      widget.type = LARGE_TEXT_BUTTON_WIDGET -- pooled under our own type when released
-      widget.frame:SetNormalFontObject("GameFontNormalHugeOutline")
-      widget.frame:SetHighlightFontObject("GameFontHighlightHugeOutline")
-      return widget
-   end, 1)
-
-   for _, key in ipairs({ "xMinus", "xPlus", "yMinus", "yPlus" }) do
-      rangeOptions.args[key].dialogControl = LARGE_TEXT_BUTTON_WIDGET
-   end
 
    -- A label over a group of options, in the same font as the Strata dropdown's, with some space above it. It's
    -- its own widget since Ace's rows have fixed gaps, and a spacer row would add more than this margin.
@@ -1471,15 +1668,35 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       return option
    end
 
+   -- one state's background color, picked in pairs (one row per status)
+   local function StateColor(order, stateText, statusTitle)
+      return {
+         order = order,
+         name = stateText,
+         desc = "The " .. statusTitle .. " status's background while it shows " .. stateText .. ".",
+         type = "color",
+         dialogControl = HALF_WIDTH_COLOR_WIDGET,
+         get = function()
+            local color = db.stateColors[stateText]
+            return color.r, color.g, color.b
+         end,
+         set = function(_, r, g, b)
+            local color = db.stateColors[stateText]
+            color.r, color.g, color.b = r, g, b
+            Refresh()
+         end,
+      }
+   end
+
    local options = {
       type = "group",
       name = "UwU: Obvious Statuses",
-      childGroups = "tab", -- General, Range & Positioning as tabs (in /os and in Options > AddOns)
+      childGroups = "tab", -- States, Range & Positioning as tabs (in /os and in Options > AddOns)
       args = {
          positioning = positioningOptions,
          range = rangeOptions,
          general = {
-            name = "General",
+            name = "States",
             type = "group",
             order = 1,
             args = {
@@ -1539,6 +1756,47 @@ UWU:AddModuleChunk("ObviousStatuses", function()
                      .. "Works with Reverse.",
                   "horizontal"
                ))),
+               font = {
+                  order = 0.0802,
+                  name = "Font",
+                  desc = "The statuses' font: the game's own, plus any your other addons share through "
+                     .. "LibSharedMedia.",
+                  type = "select",
+                  dialogControl = "LSM30_Font",
+                  values = AceGUIWidgetLSMlists.font,
+                  get = function()
+                     return db.font
+                  end,
+                  set = function(_, value)
+                     db.font = value
+                     ApplyFont()
+                     Refresh()
+                  end,
+               },
+               fontSize = {
+                  order = 0.0803,
+                  name = "Size",
+                  desc = "The statuses' text size. The statuses grow & shrink to fit it.",
+                  type = "range",
+                  min = MIN_FONT_SIZE,
+                  max = MAX_FONT_SIZE,
+                  step = 1,
+                  get = function()
+                     return db.fontSize
+                  end,
+                  set = function(_, value)
+                     db.fontSize = value
+                     ApplyFont()
+                     Refresh()
+                  end,
+               },
+               colorsLabel = GroupLabel(0.081, "Colors"),
+               roamingColor = StateColor(0.082, "Roaming", "Combat"),
+               fightingColor = StateColor(0.083, "Fighting", "Combat"),
+               dragonColor = FlightAndPhaseOnly(StateColor(0.084, "Dragon", "Flight")),
+               steadyColor = FlightAndPhaseOnly(StateColor(0.085, "Steady", "Flight")),
+               presentColor = FlightAndPhaseOnly(StateColor(0.086, "Present", "Phase")),
+               pastColor = FlightAndPhaseOnly(StateColor(0.087, "Past", "Phase")),
                visibilityLabel = GroupLabel(0.09, "Visibility"),
                alwaysShowPhase = FlightAndPhaseOnly(Checkbox(
                   1,
@@ -1601,6 +1859,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
    local function OnProfileChanged()
       db = database.profile
       ValidateSettings()
+      ApplyFont()
       ApplyStatusesStrata()
       statusesPlacement.Apply()
       for _, placement in pairs(separatePlacements) do
@@ -1621,7 +1880,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    LibStub("AceConfig-3.0"):RegisterOptionsTable(APP_NAME, options)
    local aceConfigDialog = LibStub("AceConfigDialog-3.0")
-   aceConfigDialog:SetDefaultSize(APP_NAME, 440, 650) -- tall enough for the Range tab to fit without scrolling
+   aceConfigDialog:SetDefaultSize(APP_NAME, 440, 650) -- tall enough for the Range & Positioning tabs to fit without scrolling
 
    local PREFIX = "|cFF00FF00Obvious Statuses:|r "
 

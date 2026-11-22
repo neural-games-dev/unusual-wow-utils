@@ -6,6 +6,17 @@ UWU:AddModuleChunk("ChatTabCycler", function()
 
    -- (keybinding display names are defined in Core.lua so they show even while this module is disabled)
 
+   -- Selects the docked chat tab at `index` (in the dock's left-to-right order)
+   local function selectDockedTab(index)
+      local frame = GENERAL_CHAT_DOCK.DOCKED_CHAT_FRAMES[index]
+
+      if not frame then
+         return
+      end
+
+      FCF_Tab_OnClick(_G[frame:GetName() .. "Tab"], frame)
+   end
+
    -- Function to cycle chat tabs
    local function cycleChatTab(direction)
       local currentFrame = SELECTED_CHAT_FRAME
@@ -40,7 +51,7 @@ UWU:AddModuleChunk("ChatTabCycler", function()
       end
 
       -- Select the new chat tab
-      FCF_Tab_OnClick(_G[dock.DOCKED_CHAT_FRAMES[nextIndex]:GetName() .. "Tab"], dock.DOCKED_CHAT_FRAMES[nextIndex])
+      selectDockedTab(nextIndex)
    end
 
    -- Bindings for keybindings
@@ -50,5 +61,10 @@ UWU:AddModuleChunk("ChatTabCycler", function()
 
    function ChatTabCycler_PrevTab()
       cycleChatTab(-1)
+   end
+
+   -- for the Go To Tab 1-10 bindings; does nothing if there's no docked tab at `index`
+   function ChatTabCycler_GoToTab(index)
+      selectDockedTab(index)
    end
 end)
