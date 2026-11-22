@@ -25,6 +25,7 @@ UWU:AddModuleChunk("Compass", function()
          invertBars = false,
          hideInCombat = false,
          hideDegrees = false,
+         minimapOverlay = false, -- draw the Dial over the minimap instead of in its own frame
          -- the compass's center, as an offset from the center of the screen (the default is dead center)
          x = 0,
          y = 0,
@@ -57,6 +58,7 @@ UWU:AddModuleChunk("Compass", function()
       db.invertBars = db.invertBars == true
       db.hideInCombat = db.hideInCombat == true
       db.hideDegrees = db.hideDegrees == true
+      db.minimapOverlay = db.minimapOverlay == true
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
 
@@ -91,6 +93,17 @@ UWU:AddModuleChunk("Compass", function()
    frame:SetSize(SIZE, SIZE)
    frame:SetFrameStrata("MEDIUM")
    frame:SetScale(db.scale)
+
+   -- "As Minimap Overlay": the Dial drawn over the minimap, instead of in its own frame
+   local function IsMinimapOverlay()
+      return db.style == "dial" and db.minimapOverlay and Minimap ~= nil
+   end
+
+   -- with Rotate Minimap off, the minimap stays north-up (and its arrow turns instead)
+   local function IsMinimapRotating()
+      local GetCVarBool = C_CVar and C_CVar.GetCVarBool or GetCVarBool -- older clients only have the global
+      return GetCVarBool("rotateMinimap") == true
+   end
 
    --## Instrument skin ----------------------------------------------------------
    -- Both styles are skinned like an aircraft heading indicator: a charcoal case with rounded corners & a screw
@@ -256,6 +269,9 @@ UWU:AddModuleChunk("Compass", function()
    -- Saved as the frame's center offset from the screen's center, in screen (UIParent) units
    -- whatever the scale is, so the Positioning tab's X/Y offsets always mean the same thing.
    local function ApplyPosition()
+      if IsMinimapOverlay() then
+         return -- it's pinned to the minimap
+      end
       frame:ClearAllPoints()
       -- anchor offsets are in the frame's own (scaled) units
       frame:SetPoint("CENTER", UIParent, "CENTER", db.x / db.scale, db.y / db.scale)
@@ -318,6 +334,7 @@ UWU:AddModuleChunk("Compass", function()
    -- fallback), a little bigger than their font objects' since it runs small
    local INSTRUMENT_FONT = "Fonts\\ARIALN.TTF"
    local INSTRUMENT_FONT_GROWTH = 1.2
+   local OVERLAY_LABEL_SHRINK = 2 -- points smaller, for the letters over the minimap
 
    degrees.baseFont = { degrees:GetFont() }
    degrees.color = CREAM
@@ -332,11 +349,12 @@ UWU:AddModuleChunk("Compass", function()
       ringLabels[i] = label
    end
 
-   -- sets a label's (or the degrees') font & color
-   local function StyleText(fontString, outline)
+   -- sets a label's (or the degrees') font & color, `shrink` points smaller than usual (if given)
+   local function StyleText(fontString, outline, shrink)
       local file, size = unpack(fontString.baseFont)
-      if not fontString:SetFont(INSTRUMENT_FONT, size * INSTRUMENT_FONT_GROWTH, outline) then
-         fontString:SetFont(file, size, outline)
+      shrink = shrink or 0
+      if not fontString:SetFont(INSTRUMENT_FONT, size * INSTRUMENT_FONT_GROWTH - shrink, outline) then
+         fontString:SetFont(file, size - shrink, outline)
       end
       fontString:SetTextColor(unpack(fontString.color))
    end
@@ -388,8 +406,10 @@ UWU:AddModuleChunk("Compass", function()
    end
 
    -- The Dial's tick marks, the same as the Bars' (white lines, the 8 labeled directions' longest & thickest, and
-   -- grey dots between), pointing in from the edge of the face & turning with the letters
-   local DIAL_TICK_OUTSIDE = DIAL_FACE_RADIUS - 2 -- how far from the center the ticks start
+   -- grey dots between), pointing in from the edge of the face & turning with the letters. On the minimap, the
+   -- face is the minimap, so the ticks & letters keep the same distances in from its edge.
+   local DIAL_TICK_INSET = 2 -- from the face's edge to where the ticks start
+   local DIAL_LABEL_INSET = DIAL_FACE_RADIUS - RING_RADIUS -- from the face's edge to the letters' centers
    local DIAL_MAJOR_TICK_LENGTH = 9
    local DIAL_TICK_LENGTH = 5
 
@@ -412,8 +432,7 @@ UWU:AddModuleChunk("Compass", function()
             mask:SetAllPoints(tick)
          end)
       end
-      -- its center's distance from the dial's
-      table.insert(dialTicks, { texture = tick, bearing = bearing, radius = DIAL_TICK_OUTSIDE - length / 2 })
+      table.insert(dialTicks, { texture = tick, bearing = bearing, length = length })
    end
 
    -- 1 in the middle of the strip, fading to 0 at its edges
@@ -449,18 +468,29 @@ UWU:AddModuleChunk("Compass", function()
    end
 
    local function UpdateDial(facing)
+      local faceRadius = DIAL_FACE_RADIUS
+      if IsMinimapOverlay() then
+         faceRadius = frame:GetWidth() / 2 -- the minimap's
+         -- a north-up minimap keeps north at the top, and its arrow points at our heading on the ring instead
+         if not IsMinimapRotating() then
+            facing = 0
+         end
+      end
+
       -- each label sits at (its bearing - our heading) clockwise from the top of the ring
+      local labelRadius = faceRadius - DIAL_LABEL_INSET
       for i, heading in ipairs(HEADINGS) do
          local angle = math.rad(heading.bearing) + facing
          ringLabels[i]:ClearAllPoints()
-         ringLabels[i]:SetPoint("CENTER", frame, "CENTER", RING_RADIUS * math.sin(angle), RING_RADIUS * math.cos(angle))
+         ringLabels[i]:SetPoint("CENTER", frame, "CENTER", labelRadius * math.sin(angle), labelRadius * math.cos(angle))
       end
 
       -- and so does each tick, turned to point at the center (a texture turns counter-clockwise)
       for _, tick in ipairs(dialTicks) do
          local angle = math.rad(tick.bearing) + facing
+         local radius = faceRadius - DIAL_TICK_INSET - tick.length / 2 -- its center's distance from the dial's
          tick.texture:ClearAllPoints()
-         tick.texture:SetPoint("CENTER", frame, "CENTER", tick.radius * math.sin(angle), tick.radius * math.cos(angle))
+         tick.texture:SetPoint("CENTER", frame, "CENTER", radius * math.sin(angle), radius * math.cos(angle))
          tick.texture:SetRotation(-angle)
       end
    end
@@ -487,9 +517,31 @@ UWU:AddModuleChunk("Compass", function()
       degrees:SetText(string.format("%03d°", math.floor(heading + 0.5) % 360))
    end
 
+   -- Puts the compass in its own frame on the screen, or (as a Minimap Overlay) over the minimap, its size. There
+   -- it doesn't take the mouse, so the map can still be clicked, and it can't be moved or scaled on its own.
+   local function ApplyHost(overlay)
+      frame:ClearAllPoints()
+      frame:EnableMouse(not overlay)
+      frame:SetClampedToScreen(not overlay) -- the letters may stick out past a minimap at the screen's edge
+      if overlay then
+         frame:SetParent(Minimap)
+         frame:SetFrameStrata(Minimap:GetFrameStrata())
+         frame:SetFrameLevel(Minimap:GetFrameLevel() + 5)
+         frame:SetScale(1)
+         frame:SetAllPoints(Minimap)
+      else
+         frame:SetParent(UIParent)
+         frame:SetFrameStrata("MEDIUM")
+         frame:SetScale(db.scale)
+         ApplyPosition()
+      end
+   end
+
    -- lays out the HUD for the chosen style
    local function ApplyStyle()
       local isBars = db.style == "bars"
+      local overlay = IsMinimapOverlay()
+      ApplyHost(overlay)
 
       for _, bar in ipairs(bars) do
          bar.texture:SetShown(isBars)
@@ -500,19 +552,24 @@ UWU:AddModuleChunk("Compass", function()
 
       for _, label in ipairs(ringLabels) do
          label:SetAlpha(1)
-         -- the game has no bold font, so a thick outline gives the letters their weight
-         StyleText(label, "THICKOUTLINE")
+         -- the game has no bold font, so a thick outline gives the letters their weight. Over the minimap, they're
+         -- a little smaller, to cover less of the map.
+         StyleText(label, "THICKOUTLINE", overlay and OVERLAY_LABEL_SHRINK or 0)
       end
-      StyleText(degrees, "")
+      StyleText(degrees, overlay and "OUTLINE" or "") -- the outline keeps it readable over the world
 
+      -- over the minimap, there's no case or face, and the minimap's own arrow marks us
       SetSkinShown(barsSkin, isBars)
-      SetSkinShown(dialSkin, not isBars)
+      SetSkinShown(dialSkin, not isBars and not overlay)
       ApplyColor()
 
-      arrow:SetShown(not isBars) -- the strip's center bar position already marks the heading
+      arrow:SetShown(not isBars and not overlay) -- the strip's center bar position already marks the heading
       arrow:ClearAllPoints()
       degrees:ClearAllPoints()
-      if isBars then
+      if overlay then
+         degrees:SetShown(true)
+         degrees:SetPoint("TOP", frame, "BOTTOM", 0, -4) -- just below the minimap
+      elseif isBars then
          local layout = BarsLayout()
          -- the face is the strip's size, with the case & bezel around it
          frame:SetSize(BARS_SIZE.width + INSTRUMENT_INSET * 2, layout.height + INSTRUMENT_INSET * 2)
@@ -551,9 +608,19 @@ UWU:AddModuleChunk("Compass", function()
    -- a hidden frame still gets events, so it comes back when combat ends
    frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- entering combat
    frame:RegisterEvent("PLAYER_REGEN_ENABLED") -- leaving combat
+   frame:RegisterEvent("CVAR_UPDATE") -- Rotate Minimap being turned on or off
    frame:SetScript("OnEvent", function(_, event)
+      if event == "CVAR_UPDATE" then
+         lastFacing = nil -- redraw, in case the minimap's rotation changed
+         return
+      end
       inCombat = event == "PLAYER_REGEN_DISABLED"
       UpdateVisibility()
+   end)
+
+   -- the minimap being resized (in Edit Mode) resizes the overlay with it
+   frame:SetScript("OnSizeChanged", function()
+      lastFacing = nil
    end)
 
    local function SetShown(shown)
@@ -569,8 +636,10 @@ UWU:AddModuleChunk("Compass", function()
 
    local function SetScale(scale)
       db.scale = Clamp(scale, MIN_SCALE, MAX_SCALE)
-      frame:SetScale(db.scale)
-      ApplyPosition() -- keeps the same spot on screen
+      if not IsMinimapOverlay() then -- the overlay is always the minimap's size
+         frame:SetScale(db.scale)
+         ApplyPosition() -- keeps the same spot on screen
+      end
    end
 
    local function SetPosition(x, y)
@@ -733,6 +802,26 @@ UWU:AddModuleChunk("Compass", function()
                      ApplyStyle()
                   end,
                },
+               minimapOverlay = {
+                  order = 1.55,
+                  name = "As Minimap Overlay",
+                  desc = "Draw the Dial's tick marks & letters around the edge of the minimap, with your heading in "
+                     .. "degrees below it, instead of in its own frame. With Rotate Minimap on, they turn with the "
+                     .. "map; otherwise north stays at the top, and the minimap's arrow points at your heading.\n\n"
+                     .. "It's the minimap's size and stays on it, so the scale, background, border & position "
+                     .. "options don't apply.",
+                  type = "toggle",
+                  hidden = function()
+                     return db.style ~= "dial"
+                  end,
+                  get = function()
+                     return db.minimapOverlay
+                  end,
+                  set = function(_, value)
+                     db.minimapOverlay = value
+                     ApplyStyle()
+                  end,
+               },
                invertBars = {
                   order = 1.6,
                   name = "Invert",
@@ -843,6 +932,12 @@ UWU:AddModuleChunk("Compass", function()
          },
       },
    }
+
+   -- the Minimap Overlay is the minimap's size & stays on it, with no frame of its own, so these don't apply to it
+   for _, key in ipairs({ "scale", "background", "hideBackground", "hideBorder", "backgroundReset" }) do
+      options.args.general.args[key].disabled = IsMinimapOverlay
+   end
+   positioningOptions.disabled = IsMinimapOverlay
 
    -- the Profiles tab (always last)
    options.args.profile = LibStub("AceDBOptions-3.0"):GetOptionsTable(database)
