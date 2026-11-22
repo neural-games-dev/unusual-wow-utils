@@ -59,6 +59,10 @@ UWU:AddModuleChunk("Compass", function()
       db.hideInCombat = db.hideInCombat == true
       db.hideDegrees = db.hideDegrees == true
       db.minimapOverlay = db.minimapOverlay == true
+      -- nil until the Rotate Minimap checkbox is used, which leaves the game's own setting alone
+      if type(db.rotateMinimap) ~= "boolean" then
+         db.rotateMinimap = nil
+      end
       db.x = tonumber(db.x) or 0
       db.y = tonumber(db.y) or 0
 
@@ -103,6 +107,21 @@ UWU:AddModuleChunk("Compass", function()
    local function IsMinimapRotating()
       local GetCVarBool = C_CVar and C_CVar.GetCVarBool or GetCVarBool -- older clients only have the global
       return GetCVarBool("rotateMinimap") == true
+   end
+
+   -- SexyMap has a Rotate Minimap option of its own (and applies it itself), so ours is only offered without it
+   local function HasSexyMap()
+      return C_AddOns.IsAddOnLoaded("SexyMap")
+   end
+
+   -- The game doesn't keep Rotate Minimap across reloads (and has no checkbox for it), so the Compass's checkbox is
+   -- saved & applied again at each login. Until that's been used, the game's own setting is left alone.
+   local function ApplyMinimapRotation()
+      if db.rotateMinimap == nil or HasSexyMap() then
+         return
+      end
+      local SetCVar = C_CVar and C_CVar.SetCVar or SetCVar -- older clients only have the global
+      SetCVar("rotateMinimap", db.rotateMinimap and "1" or "0")
    end
 
    --## Instrument skin ----------------------------------------------------------
@@ -609,9 +628,13 @@ UWU:AddModuleChunk("Compass", function()
    frame:RegisterEvent("PLAYER_REGEN_DISABLED") -- entering combat
    frame:RegisterEvent("PLAYER_REGEN_ENABLED") -- leaving combat
    frame:RegisterEvent("CVAR_UPDATE") -- Rotate Minimap being turned on or off
+   frame:RegisterEvent("PLAYER_LOGIN") -- to apply the Rotate Minimap checkbox, once every addon has loaded
    frame:SetScript("OnEvent", function(_, event)
       if event == "CVAR_UPDATE" then
          lastFacing = nil -- redraw, in case the minimap's rotation changed
+         return
+      elseif event == "PLAYER_LOGIN" then
+         ApplyMinimapRotation()
          return
       end
       inCombat = event == "PLAYER_REGEN_DISABLED"
@@ -822,6 +845,26 @@ UWU:AddModuleChunk("Compass", function()
                      ApplyStyle()
                   end,
                },
+               rotateMinimap = {
+                  order = 1.56,
+                  name = "Rotate Minimap",
+                  desc = "Turn the minimap as you turn, so what's ahead of you is always at the top (the game's own "
+                     .. "Rotate Minimap setting, which it has no checkbox for and doesn't keep across reloads). It's "
+                     .. "saved here & applied each time you log in or reload.\n\nWith the Minimap Overlay on, its "
+                     .. "ring turns with the map.",
+                  type = "toggle",
+                  -- SexyMap has its own (see HasSexyMap)
+                  hidden = function()
+                     return db.style ~= "dial" or HasSexyMap()
+                  end,
+                  get = function()
+                     return IsMinimapRotating()
+                  end,
+                  set = function(_, value)
+                     db.rotateMinimap = value
+                     ApplyMinimapRotation()
+                  end,
+               },
                invertBars = {
                   order = 1.6,
                   name = "Invert",
@@ -951,6 +994,7 @@ UWU:AddModuleChunk("Compass", function()
       ApplyPosition()
       ApplyStyle() -- colors it too
       UpdateVisibility()
+      ApplyMinimapRotation()
       LibStub("AceConfigRegistry-3.0"):NotifyChange(APP_NAME)
    end
 
