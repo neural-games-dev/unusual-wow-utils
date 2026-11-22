@@ -955,7 +955,9 @@ UWU:AddModuleChunk("ObviousStatuses", function()
 
    local lastInRange -- the last check's result, to tell when the same target comes into range
 
-   local function RefreshRange()
+   -- The sound plays when the target comes into range, and when a target is selected that's already in range
+   -- (`isNewTarget`). It's silent while the indicator is hidden.
+   local function RefreshRange(isNewTarget)
       local spell = GetRangeSpell()
       if not spell then
          lastInRange = nil
@@ -964,7 +966,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
 
       local inRange = IsTargetInRange(spell.spellID)
-      if inRange and lastInRange == false then
+      if inRange and (lastInRange == false or isNewTarget) and rangeFrame:IsShown() then
          PlayRangeSound(db.rangeSound)
       end
       lastInRange = inRange
@@ -998,7 +1000,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
    end)
 
-   -- a new target shows straight away, instead of on the next check (and is silent if it's already in range)
+   -- a new target shows straight away, instead of on the next check (and the sound plays if it's already in range)
    rangeFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
    -- entering & leaving combat, for "Hide in Combat" (the statuses' frame sets the same state, in whichever order
    -- the two frames get the event)
@@ -1012,7 +1014,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
       end
 
       lastInRange = nil
-      RefreshRange()
+      RefreshRange(true)
    end)
 
    local rangePlacement = CreatePlacement(rangeFrame, "rangeX", "rangeY", "rangeScale")
@@ -1441,7 +1443,7 @@ UWU:AddModuleChunk("ObviousStatuses", function()
             order = 2.5,
             name = "Play Sound",
             desc = "A sound to play when your target comes into range, from the game or shared by your other "
-               .. "addons. It stays silent when you select a target that's already in range.",
+               .. "addons. It also plays when you select a target that's already in range.",
             type = "select",
             dialogControl = HALF_WIDTH_SELECT_WIDGET,
             itemControl = SOUND_ITEM_WIDGET,
